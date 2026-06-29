@@ -23,6 +23,35 @@ def _(mo):
     your code**. This is the most important lecture in the course — everything later
     is a corollary. We will build it from one design decision: the GPU is built to
     **hide latency with parallelism**, not to minimize it.
+
+    This lecture is deliberately heavy on definitions. Every italicized term below is
+    one you will use in every kernel you write, so we pin each one down the first time
+    it appears — and collect them all in the glossary box right under this paragraph.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### The words you'll need (keep this open)
+
+    | term | one-line meaning |
+    |---|---|
+    | **kernel** | a function *you* write that runs on the GPU, launched as a grid of many threads |
+    | **thread / lane** | the smallest unit of execution; runs your kernel on its *own* slice of data |
+    | **warp** | a bundle of **32 threads** that execute the *same* instruction in lockstep — the real scheduling unit |
+    | **block** | a group of threads (≤ 1024) that share fast on-chip memory and can synchronize; lives on one SM |
+    | **grid** | *all* the blocks of a single launch |
+    | **SM** (Streaming Multiprocessor) | a physical cluster of lanes on the chip — your card has **70**; each runs many warps at once |
+    | **host / device** | host = the CPU running your Python/C++ program; device = the GPU that runs the kernel |
+    | **cycle** | one tick of the GPU clock; latencies are quoted in cycles (a register read ≈ 1, a DRAM read ≈ hundreds) |
+    | **latency** | how long *one* operation takes to finish |
+    | **throughput** | how *many* operations finish per unit time, counting everything in flight at once |
+    | **occupancy** | how full an SM's warp slots are — i.e. how much parallel work is resident to hide latency (lecture `0d`) |
+
+    Don't memorize the table — just know it's here. Each term is reintroduced in
+    context below.
     """)
     return
 
@@ -34,23 +63,145 @@ def _(mo):
 
     ## 1. Throughput, not latency
 
-    A CPU core spends most of its transistors making *one* stream of instructions
-    finish fast: big caches, branch prediction, out-of-order execution. It hates
+    Two words run through this entire course, so pin them down first (they're in the
+    glossary too):
+
+    - **Latency** — how long *one* operation takes to finish. A load from DRAM costs
+      **hundreds of clock cycles**, where a *cycle* is a single tick of the GPU's clock.
+    - **Throughput** — how *many* operations finish per unit time, counting everything
+      in flight at once.
+
+    A CPU core spends most of its transistors minimizing **latency** for *one* stream
+    of instructions: big caches, branch prediction, out-of-order execution. It hates
     waiting.
 
-    A GPU makes the opposite bet. It has thousands of simple lanes and *expects* to
-    wait — a load from DRAM costs hundreds of cycles. Instead of avoiding the stall,
-    it **parks the stalled work and runs other work**. With enough independent work
-    resident, the memory latency is completely hidden behind useful computation.
+    A GPU makes the opposite bet. It maximizes **throughput** and simply *accepts* that
+    any single operation is slow. It has thousands of simple lanes and *expects* to
+    wait. Instead of working hard to avoid a memory stall, it **parks the stalled work
+    and runs other work**. With enough independent work resident, the memory latency is
+    completely **hidden** behind useful computation — note the word: hidden, not
+    *reduced*. The DRAM load is just as slow; the machine is simply never sitting around
+    waiting for it.
 
-    So the GPU's whole personality is: **oversubscribe me.** Give me far more
-    parallel work than I have lanes, and I will keep the lanes busy while memory
-    catches up. A kernel that does *not* give it enough parallel work leaves the
-    machine idle — this is the failure mode you will learn to recognize.
+    So the GPU's whole personality is: **oversubscribe me.** Give it far more parallel
+    work than it has lanes, and it keeps the lanes busy while memory catches up. A
+    kernel that does *not* supply enough parallel work leaves the machine idle — that is
+    the failure mode you will learn to recognize, and the picture below shows exactly
+    what it looks like.
 
     > [PMPP](https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0)
     > Ch. 1–4 develops this latency-hiding model in depth.
     """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### Seeing latency hiding
+
+    Here is the single most important mechanism in the course, simulated. Each **warp**
+    repeats the same rhythm: issue a little math, then **stall** waiting for a DRAM load
+    to return. The SM can issue from only **one** ready warp per cycle. Green = the SM
+    is issuing math; red = the SM sat **idle** because *every* resident warp was stalled
+    on memory.
+
+    - **Left — 1 warp resident:** the lone warp computes for a moment, then stalls for
+      the whole memory latency while the SM has nothing else to run. The machine is idle
+      most of the time. This is the starved kernel.
+    - **Right — 6 warps resident:** while warp 0 waits on its load, warps 1–5 issue
+      their math. The stalls are still there — they're just *hidden* behind other warps'
+      work, and the SM stays busy.
+
+    Same slow memory, same per-warp stalls. The only thing that changed is **how much
+    independent work was resident** — and that is the entire game.
+    """)
+    return
+
+
+@app.cell
+def _():
+    def _run():
+        import matplotlib.pyplot as plt
+        import matplotlib.patches as mpatches
+
+        COMPUTE = 2     # cycles of math a warp issues before its next memory load
+        STALL = 10      # cycles a DRAM load takes to return (the latency we hide)
+        T = 36          # cycles simulated
+
+        # Cycle-by-cycle scheduler for one SM that issues one warp per cycle.
+        # Returns: per-warp list of cycles it issued math, list of idle cycles,
+        # and the fraction of cycles the SM was busy.
+        def simulate(n_warps):
+            rem_c = [0] * n_warps      # compute cycles left in current chunk
+            rem_s = [0] * n_warps      # stall cycles left on the in-flight load
+            ready = [True] * n_warps   # not stalled, has work to issue
+            comp = [[] for _ in range(n_warps)]
+            idle = []
+            busy = 0
+            rr = 0                     # round-robin pointer
+            for t in range(T):
+                # memory is served in parallel: every stall ticks down each cycle
+                for w in range(n_warps):
+                    if rem_s[w] > 0:
+                        rem_s[w] -= 1
+                        if rem_s[w] == 0:
+                            ready[w] = True
+                # pick a warp to issue: continue one mid-compute, else start a ready one
+                pick = -1
+                for off in range(n_warps):
+                    w = (rr + off) % n_warps
+                    if rem_c[w] > 0:
+                        pick = w
+                        break
+                if pick == -1:
+                    for off in range(n_warps):
+                        w = (rr + off) % n_warps
+                        if ready[w]:
+                            pick = w
+                            rem_c[w] = COMPUTE
+                            ready[w] = False
+                            break
+                if pick == -1:
+                    idle.append(t)                 # nothing ready: SM stalls
+                else:
+                    busy += 1
+                    rem_c[pick] -= 1
+                    comp[pick].append(t)
+                    if rem_c[pick] == 0:           # finished a chunk -> issue a load
+                        rem_s[pick] = STALL
+                    rr = pick + 1
+            return comp, idle, busy / T
+
+        _fig, _axes = plt.subplots(1, 2, figsize=(10, 3.9))
+        for _ax, _n in zip(_axes, [1, 6]):
+            _comp, _idle, _util = simulate(_n)
+            for _w in range(_n):
+                for _t in _comp[_w]:
+                    _ax.add_patch(mpatches.Rectangle(
+                        (_t, _w + 0.1), 1, 0.8, facecolor="#4c9f70", edgecolor="none"))
+            # SM-busy/idle strip beneath the warps
+            _yidle = -1.2
+            for _t in range(T):
+                _is_busy = _t not in _idle
+                _ax.add_patch(mpatches.Rectangle(
+                    (_t, _yidle), 1, 0.8,
+                    facecolor=("#cfe8d8" if _is_busy else "#d65f5f"),
+                    edgecolor="white", linewidth=0.3))
+            _ax.text(-0.5, _yidle + 0.4, "SM", fontsize=8, ha="right", va="center")
+            _ax.set_xlim(-3, T)
+            _ax.set_ylim(_yidle - 0.4, _n + 0.4)
+            _ax.set_yticks([_w + 0.5 for _w in range(_n)])
+            _ax.set_yticklabels([f"warp {_w}" for _w in range(_n)], fontsize=8)
+            _ax.set_xlabel("clock cycle")
+            _ax.set_title(f"{_n} warp(s) resident  ->  SM busy {_util:.0%} of the time")
+        _fig.suptitle(
+            "Latency hiding: green = SM issuing math,  red = SM idle (every warp stalled)",
+            y=1.03)
+        _fig.tight_layout()
+        return _fig
+
+    _run()
     return
 
 
@@ -62,7 +213,9 @@ def _(mo):
     ## 2. The thread hierarchy
 
     Your kernel is launched as a **grid** of **thread blocks**, each block a group of
-    **threads**. Threads are scheduled in hardware bundles of 32 called **warps**.
+    **threads**. A single **thread** is one **lane** of execution: it runs your kernel
+    code on its *own* slice of the data, and it is the smallest unit there is. Threads
+    are scheduled by the hardware in fixed bundles of 32 called **warps**.
 
     $$\underbrace{\text{thread}}_{\text{1 lane}}
       \;\xrightarrow{\times 32}\;
@@ -72,19 +225,27 @@ def _(mo):
       \;\xrightarrow{}\;
       \underbrace{\text{grid}}_{\text{your whole launch}}$$
 
-    The contract:
+    Why 32? It is the hardware's fixed bundle width — the warp is what the scheduler
+    actually issues, so 32 is the granularity of *everything*: how lanes are grouped,
+    how memory requests are batched, how branches diverge. You will round to multiples
+    of 32 constantly.
 
-    - **Threads in a block** can cooperate: they share **shared memory** and can
-      **synchronize** (`__syncthreads()` / a Triton barrier). A block runs entirely
-      on **one SM**.
+    The contract between the levels:
+
+    - **Threads in a block** can cooperate. They share **shared memory** — a small, fast
+      on-chip scratchpad that every thread in the block can read and write (detailed in
+      `0c`) — and they can **synchronize**: a *barrier* where every thread in the block
+      waits until all of them have arrived (written `__syncthreads()` in CUDA, a barrier
+      call in Triton). A block runs entirely on **one SM** — a *Streaming
+      Multiprocessor*, the physical cluster of lanes on the chip that we unpack in §3.
     - **Blocks are independent.** Different blocks may run in any order, on any SM,
-      possibly not at the same time. You may *not* assume two blocks run together or
-      synchronize globally within a launch.
-    - **Warps** are the real unit of execution: 32 threads issuing the *same*
-      instruction together (next section).
+      possibly not even at the same time. You may *not* assume two blocks run together,
+      and there is no barrier *across* blocks within a launch.
+    - **Warps** are the real unit of execution: 32 threads issuing the *same* instruction
+      together (next section).
 
-    On your card: a block is at most **1024 threads** (32 warps), and an SM holds up
-    to **1536 resident threads** (48 warps) drawn from one or more blocks.
+    On your card: a block is at most **1024 threads** (32 warps), and an SM holds up to
+    **1536 resident threads** (48 warps) drawn from one or more blocks.
     """)
     return
 
@@ -136,21 +297,59 @@ def _(mo):
 
     ## 3. Mapping onto the SMs
 
-    The GPU is a grid of **Streaming Multiprocessors (SMs)** — your card has **70**.
-    The hardware scheduler hands blocks to SMs. An SM runs as many resident blocks as
-    its limits allow, interleaving their warps cycle-by-cycle. When one warp stalls on
-    a load, the SM issues from another ready warp **in the same cycle** — that is the
-    latency hiding from §1, made concrete.
+    The GPU is an array of **Streaming Multiprocessors (SMs)** — your card has **70**.
+    An SM is the physical unit that owns a pool of lanes, a register file, and a slab of
+    shared memory. The hardware scheduler hands blocks to SMs; each SM runs as many
+    resident blocks as its limits allow and interleaves their warps cycle-by-cycle. When
+    one warp stalls on a load, the SM issues from another ready warp **in the very next
+    cycle** — that is the latency hiding from §1, now located in real silicon.
 
     This is why you launch *thousands* of blocks for a big array even though there are
-    only 70 SMs: the extra blocks queue up, and the surplus of resident warps is
-    exactly what keeps the lanes fed. **More independent warps resident = more latency
-    hidden.** The fraction of the SM's warp capacity you actually fill is called
-    **occupancy**, and we devote `0d` to it.
+    only 70 SMs. The blocks that don't fit run later, in **waves**: a first batch fills
+    every SM to capacity, and as those blocks finish, the next batch moves in. The print
+    below works out how many blocks are resident at once and how many waves a launch
+    takes — and the surplus of resident warps in each wave is exactly what keeps the
+    lanes fed.
 
-    > A block is sticky to one SM for its whole life (so its threads can share memory
-    > and sync). Blocks themselves are fire-and-forget across the 70 SMs.
+    > A block is *sticky* to one SM for its whole life (so its threads can share memory
+    > and synchronize). Blocks themselves are fire-and-forget across the 70 SMs — order
+    > and timing between blocks are not yours to control.
     """)
+    return
+
+
+@app.cell
+def _():
+    def _run():
+        # How blocks of a given size pack onto the 70 SMs, and how many "waves"
+        # a launch of N blocks takes. Same limits used by the slider in section 6.
+        SMS = 70
+        MAX_THREADS_SM = 1536      # resident-thread budget per SM (5070 Ti)
+        MAX_BLOCKS_SM = 32         # hardware cap on resident blocks per SM
+
+        BLOCK_SIZE = 256           # threads/block = 8 warps
+        by_threads = MAX_THREADS_SM // BLOCK_SIZE        # blocks an SM can hold (threads)
+        resident_per_sm = min(by_threads, MAX_BLOCKS_SM)  # ... capped by the block limit
+        resident_total = resident_per_sm * SMS            # blocks live across the whole GPU
+
+        print("=== One wave on the RTX 5070 Ti ===")
+        print(f"  BLOCK_SIZE = {BLOCK_SIZE} threads ({BLOCK_SIZE // 32} warps)")
+        print(f"  per SM:  min(1536//{BLOCK_SIZE}, {MAX_BLOCKS_SM}) = "
+              f"{resident_per_sm} resident blocks")
+        print(f"  whole GPU:  {resident_per_sm} x {SMS} SMs = "
+              f"{resident_total} blocks resident at once  (= one wave)\n")
+
+        print(f"  {'N blocks launched':>18s} {'waves = ceil(N / wave)':>24s}")
+        print("  " + "-" * 44)
+        for _N in [70, resident_total, 10_000, 1_000_000]:
+            _waves = -(-_N // resident_total)   # ceil div
+            print(f"  {_N:>18,} {_waves:>24,}")
+
+        print("\n  Takeaway: a launch is many waves of blocks streaming across 70 SMs.")
+        print("  Each wave wants a surfeit of resident warps -- that surplus is the")
+        print("  latency hiding from section 1, paid for in parallel work.")
+
+    _run()
     return
 
 
@@ -162,20 +361,27 @@ def _(mo):
     ## 4. SIMT: warps execute in lockstep
 
     The 32 threads of a warp share **one instruction stream** — Single Instruction,
-    Multiple Thread. In the same cycle all 32 lanes execute the same instruction on
-    their own data. This is why warp size pervades everything.
+    Multiple Thread. In the same cycle all 32 lanes execute the same instruction, each
+    on its own data. (Contrast SIMD on a CPU, where *you* pack the lanes into one vector
+    register by hand; under SIMT you write scalar per-thread code and the hardware gangs
+    32 threads into a warp for you.) This is why the warp size of 32 pervades everything.
 
     The catch is **branch divergence**. If a data-dependent `if` sends some lanes down
-    the `then` path and others down the `else`, the warp cannot do both at once — the
-    hardware executes *both* paths and masks off the inactive lanes each time:
+    the `then` path and others down the `else`, the warp cannot run both at once — it has
+    only one instruction stream. The hardware executes *both* paths in sequence and
+    **masks off** the inactive lanes each time:
 
     $$\text{warp time} \;\approx\; \text{time}(\text{then}) + \text{time}(\text{else})
       \quad\text{when the warp diverges}$$
 
-    A branch that is *uniform across the warp* (all 32 lanes agree) is free — no
-    divergence. The lesson you will apply in every kernel: **structure work so a
-    warp's 32 lanes follow the same path and touch contiguous data.** The worked
-    example below shows the cost.
+    "Masks off" means the inactive lanes still ride along through the path — they occupy
+    the warp but their results are thrown away. They are *predicated off*, not skipped,
+    which is exactly why both paths cost time. A branch that is **uniform across the
+    warp** (all 32 lanes agree) takes only one path and is free — no divergence.
+
+    The lesson you will apply in every kernel: **structure work so a warp's 32 lanes
+    follow the same path and touch contiguous data.** The worked example below counts
+    the cost.
     """)
     return
 
@@ -209,18 +415,21 @@ def _(mo):
 
     ## 5. The launch boundary
 
-    Kernels run on the **device**; you configure and launch them from the **host**.
-    A launch specifies the **grid** (how many blocks) and the **block** (how many
-    threads each). In CUDA C++ that is `kernel<<<grid, block>>>(args)`; in Triton you
-    pass a `grid` and the framework derives the block from your `BLOCK_SIZE`.
+    Kernels run on the **device** (the GPU); you configure and launch them from the
+    **host** (your CPU, running the Python or C++ program). A launch specifies the
+    **grid** (how many blocks) and the **block** (how many threads each). In CUDA C++
+    that is `kernel<<<grid, block>>>(args)`; in Triton you pass a `grid` and the
+    framework derives the block from your `BLOCK_SIZE`.
 
     Two facts to carry forward:
 
     1. **You choose the decomposition.** How you map your data onto grid/block
-       coordinates *is* the kernel design. Get it wrong and you serialize or diverge.
-    2. **Launches are asynchronous and not free.** The CPU queues the kernel and moves
-       on; a kernel launch costs microseconds of overhead. Tiny kernels are dominated
-       by launch + memory traffic, not math — which is why we *fuse* operations later.
+       coordinates *is* the kernel design. Get it wrong and you serialize the work or
+       force a warp to diverge.
+    2. **Launches are asynchronous and not free.** The host *queues* the kernel and
+       moves on without waiting; a launch costs microseconds of overhead before any of
+       your code runs. Tiny kernels are dominated by that launch overhead plus memory
+       traffic, not by math — which is why we *fuse* operations together later.
 
     The canonical 1-D mapping (you will write it in exercise `e01`):
 
@@ -231,6 +440,10 @@ def _(mo):
     mask  = offs < n_elements             # guard the ragged last block
     grid  = ceil_div(n_elements, BLOCK_SIZE)   # this many blocks
     ```
+
+    Read that as: each block claims a contiguous `BLOCK_SIZE`-wide window of the array,
+    `offs` are the global indices that window covers, and `mask` switches off the lanes
+    that would run past the end when `n_elements` isn't a clean multiple of `BLOCK_SIZE`.
     """)
     return
 
@@ -247,12 +460,13 @@ def _(mo):
 
     - **#blocks** = $\lceil N / \text{BLOCK\_SIZE}\rceil$ — must cover all elements.
     - **warps/block** = $\text{BLOCK\_SIZE}/32$ — should divide evenly (no wasted lanes).
-    - **occupancy** (threads-only model) = resident warps / 48, capped by the SM's
-      1536-thread and up-to-32-blocks-per-SM (sm_120) limits.
+    - **occupancy** = resident warps / 48. *Occupancy* is how full the SM's warp slots
+      are — the §1 surplus, quantified. Here it is capped by the SM's 1536-thread budget
+      and its up-to-32-blocks-per-SM (`sm_120`) limit.
 
-    Occupancy here ignores registers and shared memory — the *other* two limiters,
-    covered in `0d`. Even so, notice block sizes that aren't multiples of 32 waste
-    lanes, and very small blocks can't fill the SM.
+    This occupancy model ignores registers and shared memory — the *other* two limiters,
+    covered in `0d`. Even so, notice that block sizes which aren't multiples of 32 waste
+    lanes, and very small blocks can't put enough warps on an SM to hide latency.
     """)
     return
 
@@ -316,12 +530,14 @@ def _(mo):
     ## Why this matters for the kernels you'll write
 
     - **Launch enough work.** A grid with too few blocks starves the 70 SMs and the
-      latency-hiding collapses. When in doubt, more independent blocks.
+      latency-hiding collapses — the left panel of the §1 picture. When in doubt, more
+      independent blocks.
     - **Think in warps of 32.** Block sizes that are multiples of 32, contiguous data
       per warp, uniform branches. Coalescing (`1b`) is the same idea applied to memory.
     - **Avoid divergence on the hot path.** Push data-dependent branches out of the
       inner loop, or make them warp-uniform.
-    - **Fuse to amortize launch + traffic.** Many tiny kernels lose to one fused one.
+    - **Fuse to amortize launch + traffic.** Many tiny kernels lose to one fused one,
+      because each launch pays the host-side overhead and re-reads memory.
 
     Hold these four and most "why is my kernel slow?" questions answer themselves.
     """)
