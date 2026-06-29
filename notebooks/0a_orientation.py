@@ -131,8 +131,8 @@ def _(mo):
     mo.md(r"""
     ### The latency you are hiding
 
-    The reason occupancy matters: the memory hierarchy spans **three orders of
-    magnitude** in latency. A kernel that stalls on DRAM without enough other work
+    The reason occupancy matters: the memory hierarchy spans **nearly three orders
+    of magnitude** in latency. A kernel that stalls on DRAM without enough other work
     in flight is throwing away the chip. The bar chart below (log scale) is the
     single most important picture in the course.
     """)
@@ -154,7 +154,7 @@ def _():
         _ax.barh(levels, cycles, color=colors)
         _ax.set_xscale("log")
         _ax.set_xlabel("approx. access latency (cycles, log scale)")
-        _ax.set_title("Memory hierarchy: each level ~10x slower than the last")
+        _ax.set_title("Memory hierarchy: register -> DRAM spans ~500x (log scale)")
         for _i, _c in enumerate(cycles):
             _ax.text(_c, _i, f"  ~{_c}", va="center")
         _ax.invert_yaxis()

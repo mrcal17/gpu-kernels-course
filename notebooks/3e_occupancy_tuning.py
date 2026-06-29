@@ -51,10 +51,13 @@ def _(mo):
     The arithmetic that matters: for the SM to hold all 48 warps (full occupancy), the
     registers-per-thread budget is
 
-    $$R_{\max} = \frac{65{,}536}{1536} \approx 42.6 \;\Rightarrow\; R \le 42
+    $$R_{\max} = \frac{65{,}536}{1536} \approx 42.6 \;\Rightarrow\; R \le 40
       \text{ registers/thread for 100% occupancy.}$$
 
-    Cross 42 and you fall off the peak in **discrete steps**, because the hardware
+    That 42.6 is the *continuous* bound; warp-granularity rounding (256 regs/warp,
+    below) tightens the real ceiling to **40 regs/thread** — 41–42 already round up to
+    1536 regs/warp = 42 warps = 88%. Cross 40 and you fall off the peak in **discrete
+    steps**, because the hardware
     allocates registers in *granularity-rounded blocks* and packs whole warps. A kernel
     the compiler decides needs 64 registers/thread can keep at most
 
@@ -118,7 +121,7 @@ def _():
         for _r in [24, 32, 40, 42, 48, 56, 64, 80, 96, 128, 168, 255]:
             _w = warps_resident(_r)
             _note = ""
-            if _r <= 42:
+            if _r <= 40:
                 _note = "full occupancy"
             elif _r >= 168:
                 _note = "very low — needs strong ILP to win"
@@ -127,7 +130,7 @@ def _():
             print(_print)
 
         print("\n  Occupancy drops in STEPS, not smoothly — granularity rounding +")
-        print("  whole-warp packing. 42 regs/thd is the last rung at 100%.")
+        print("  whole-warp packing. 40 regs/thd is the last rung at 100%.")
 
     _run()
     return
@@ -160,9 +163,10 @@ def _(mo):
     ```
 
     Asking for 6 blocks * 256 threads = 1536 threads = 100% occupancy forces the
-    compiler to fit each thread in `65536 / 1536 ~= 42` registers — spilling the rest if
-    it must. This is *local* (only this kernel) and *intentful* (you state the goal, the
-    compiler solves for registers).
+    compiler to fit each thread in `<= 40` registers — the continuous `65536 / 1536 ~=
+    42.6` is an upper bound that granularity rounding tightens to 40 — spilling the rest
+    if it must. This is *local* (only this kernel) and *intentful* (you state the goal,
+    the compiler solves for registers).
 
     **(b) `-maxrregcount=N` — the blunt, whole-translation-unit hammer.**
 
@@ -230,7 +234,7 @@ def _(mo):
     occupancy** by giving each thread more independent work (register blocking: each
     thread computes a small tile of outputs, reusing operands held in registers). Those
     kernels *want* the extra registers — capping them to chase occupancy would *slow them
-    down*. Register-heavy, low-occupancy, and fast, all at once.
+    down*.
 
     The practical upshot: **do not blindly chase 100% occupancy.** When a kernel is
     register-blocked for ILP, the registers are doing useful work. Measure; the roofline
@@ -300,8 +304,8 @@ def _():
         _ax.plot(regs, perf_ilp, color="#4c9f70", linewidth=2.2,
                  label="perf with ILP (concurrency = occ x ILP)")
 
-        _ax.axvline(42, color="#999", linestyle=":", linewidth=1.2)
-        _ax.text(43, 0.05, "42 regs/thd\n(last 100% rung)",
+        _ax.axvline(40, color="#999", linestyle=":", linewidth=1.2)
+        _ax.text(41, 0.05, "40 regs/thd\n(last 100% rung)",
                  color="#666", fontsize=8)
         _ax.fill_between(regs, perf_naive, perf_ilp, where=(perf_ilp > perf_naive),
                          color="#4c9f70", alpha=0.12)
@@ -485,8 +489,8 @@ def _(mo):
       → Already well-occupied and memory-bound. Occupancy is *not* the problem; chase
       **bandwidth** — coalescing, fewer bytes, or overlap the loads (`3f`). The register
       knob would do nothing.
-    - **Kernel B:** theoretical occupancy 33% (limiter: **registers**, 96/thread),
-      achieved 31%, dominant stall `Stall Wait` (math dependencies), but already at 85%
+    - **Kernel B:** theoretical occupancy 44% (limiter: **registers**, 96/thread),
+      achieved 42%, dominant stall `Stall Wait` (math dependencies), but already at 85%
       of the *compute* roof. → This is the Volkov case. The 96 registers are buying ILP
       that is paying off. Forcing `__launch_bounds__` to raise occupancy would cause
       spills and *lose* performance. Leave it.

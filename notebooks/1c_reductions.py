@@ -95,9 +95,7 @@ def _(mo):
 
     On a parallel machine with enough lanes, the depth is what you wait for. Summing
     $n = 1024$ elements: serial is **1023** dependent steps; the tree is **10**. That gap
-    — $n$ vs. $\log_2 n$ — is the entire reason reductions belong on a GPU. Each step is a
-    halving of live values, every surviving lane doing one $\oplus$ in parallel with the
-    others.
+    — $n$ vs. $\log_2 n$ — is the entire reason reductions belong on a GPU.
 
     The catch is the **tail of the tree**: near the root only a few lanes are still active
     (then 2, then 1), so the warp is mostly idle in the last steps. That's fine for one

@@ -337,8 +337,9 @@ def _(mo):
     ## 5. Underneath WMMA: a glimpse of `mma.sync` PTX (and why CUTLASS exists)
 
     WMMA is the *friendly* face of tensor cores. One level down is the raw PTX
-    instruction the compiler emits — `mma.sync` (and on Hopper/Blackwell, the
-    warpgroup-wide `wgmma` / `tcgen05` family). A single `mma.sync` looks like:
+    instruction the compiler emits — `mma.sync` (and the warpgroup-wide `wgmma`
+    on Hopper, the Tensor-Memory-based `tcgen05` family on Blackwell). A single
+    `mma.sync` looks like:
 
     ```ptx
     // m16n8k16, fp16 inputs, fp32 accumulate — one warp-wide tile-MMA

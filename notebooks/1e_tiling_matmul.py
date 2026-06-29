@@ -343,8 +343,8 @@ def _(mo):
     Bigger tiles → more reuse → higher intensity → faster. The only thing stopping you
     from $T = \infty$ is that the A tile, B tile, and accumulator must *fit* in SRAM and
     registers — which is exactly the **occupancy** budget from `0d`. Tiling is the trade:
-    spend on-chip memory to buy arithmetic intensity. The interactive below lets you feel
-    that dot slide along the roofline as you turn the tile-size knob.
+    spend on-chip memory to buy arithmetic intensity. The interactive below makes this
+    concrete.
 
     > Simon Boehm's
     > ["How to optimize a CUDA matmul kernel for cuBLAS-like performance"](https://siboehm.com/articles/22/CUDA-MMM)
@@ -461,9 +461,9 @@ def _(mo):
 
     The intensity uses the exact square-tile result derived above, $I = T/4$. (The fully
     general rectangular form, when you allow $\text{BLOCK\_M}$ and $\text{BLOCK\_N}$ to
-    differ, is the harmonic-mean expression $I \approx \tfrac{1}{2}\,\tfrac{2}{1/T_m +
-    1/T_n}$ in elements — for square tiles $T_m = T_n = T$ it collapses to $T/4$ in
-    FLOP/byte for fp32.) Drag $T$ from tiny to large and watch the dot climb the memory
+    differ, is the harmonic-mean expression $I \approx \tfrac{2}{1/T_m +
+    1/T_n}$ FLOP/element — for square tiles $T_m = T_n = T$ that is $T$ FLOP/element, and
+    dividing by 4 bytes (fp32) gives $T/4$ FLOP/byte.) Drag $T$ from tiny to large and watch the dot climb the memory
     roof toward the ridge. At the slider's max ($T=128 \Rightarrow I=32$) you're a $128\times$
     above naive but still short of the ridge ($I\approx49$) — tiles bigger than SRAM can
     hold would carry you across into the compute-bound regime. The whole optimization story
@@ -564,10 +564,8 @@ def _(mo):
 
     ## Why this matters for the kernels you'll write
 
-    - **2-D decomposition is *the* pattern for matrix kernels.** `pid_m, pid_n`, the
-      `offs_m[:, None] + offs_n[None, :]` broadcast, masking both dimensions — you just
-      learned it on transpose, you'll reuse it verbatim for matmul, and again for every
-      matrix kernel after.
+    - **2-D decomposition is *the* pattern for matrix kernels.** The 2-D broadcast +
+      both-dims mask from section 1 recurs verbatim in matmul and every matrix kernel after.
     - **Tiling is the universal lever to raise intensity.** Any time a kernel reloads
       the same data from DRAM, blocking it into reused tiles raises $I$ and walks the dot
       off the memory roof. Matmul is the cleanest example, not the only one.

@@ -52,7 +52,7 @@ def _(mo):
 
     The naive recipe computes these as three passes, and the problem is the middle
     object: $S$ (and $P$) are **$N \times N$**. For $N = 8192$ that's 67 million
-    entries — **256 MB in fp32 per head**, written to HBM after the matmul and read
+    entries — **268 MB (fp32) per head**, written to HBM after the matmul and read
     back for the softmax, then written again, then read for $PV$. The math is cheap;
     the memory traffic for that ghost matrix is what dominates.
 
@@ -378,11 +378,19 @@ def _(mo):
 
     ## 5. The payoff: linear memory
 
+    Two different "memory" costs matter, and FlashAttention separates them. Its
+    resident **footprint** — the state that lives in SRAM at any moment — is genuinely
+    $O(N)$: just the running $(m, \ell, O)$ triple, never the $N\times N$ matrix. That
+    is the payoff in the heading. But its **HBM traffic** (total bytes moved) is *not*
+    linear: each query block re-reads all of $K,V$, so traffic is
+    $O(N^2 d / M_{\text{sram}})$ — still super-linear, just divided by the block factor.
+
     The interactive below contrasts HBM traffic for naive attention (which writes and
-    re-reads the $N\times N$ scores) against FlashAttention (which streams $Q,K,V$ and
-    keeps only $O(N)$ state) as you grow the sequence length. The naive curve is the
-    quadratic that ends every long-context dream; the flash curve is near-linear.
-    Slide $N$ up and watch the gap explode — at long context it's orders of magnitude.
+    re-reads the $N\times N$ scores) against FlashAttention (which re-streams $K,V$ per
+    query block but never materializes $S$). The naive curve is the steep
+    $O(N^2)$ that ends every long-context dream; the flash curve is the much gentler
+    $O(N^2/M_{\text{sram}})$. Slide $N$ up and watch the gap explode — at long context
+    it's orders of magnitude.
     """)
     return
 
@@ -403,6 +411,7 @@ def _(seqlen_slider):
 
         d = 64                # head dim
         bytes_ = 2            # fp16
+        BLOCK_M = 128         # query-block rows (sets the K,V re-read factor)
         N_user = int(seqlen_slider.value)
 
         Ns = np.array([512, 1024, 2048, 4096, 8192, 16384, 32768])
@@ -415,12 +424,14 @@ def _(seqlen_slider):
             out = N * d * bytes_
             return qkv + scores + out
 
-        # Flash: read Q,K,V once (K,V re-read per Q-block, but tiled and coalesced);
-        # write O once; O(N) running state stays in SRAM, not HBM.
+        # Flash: read Q once, but K,V are re-read once per Q-block (each of the
+        # N/BLOCK_M query blocks sweeps all of K,V), so K,V traffic is super-linear;
+        # write O once. The O(N) running state is the resident FOOTPRINT in SRAM, not
+        # the traffic. Traffic is O(N^2 d / BLOCK_M), still far below naive's O(N^2).
         def flash_bytes(N):
-            qkv = 3 * N * d * bytes_
+            qkv = N * d * bytes_ + (N / BLOCK_M) * (2 * N * d * bytes_)  # K,V re-read per Q-block
             out = N * d * bytes_
-            return qkv + out                     # no N^2 term
+            return qkv + out
 
         naive = np.array([naive_bytes(int(n)) for n in Ns]) / 1e6   # MB
         flash = np.array([flash_bytes(int(n)) for n in Ns]) / 1e6
@@ -433,7 +444,7 @@ def _(seqlen_slider):
         _ax.plot(Ns, naive, "-o", color="#d65f5f", linewidth=2,
                  label="naive  (O(N^2): materializes S)")
         _ax.plot(Ns, flash, "-o", color="#4c9f70", linewidth=2,
-                 label="flash  (O(N): running stats)")
+                 label="flash  (O(N^2 / M_sram): K,V re-read per Q-block)")
         _ax.axvline(N_user, color="#999", linestyle="--", linewidth=1)
         _ax.scatter([N_user], [nb], color="#d65f5f", s=80, zorder=5)
         _ax.scatter([N_user], [fb], color="#4c9f70", s=80, zorder=5)

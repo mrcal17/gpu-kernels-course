@@ -152,7 +152,7 @@ def _():
             print(f"  {_regs:>8d} {_smem:>7.0f} {_bt:>6d} {_br:>6d} "
                   f"{_bs:>7d} {_blk:>7d} {_w:>6d} {_o:>5.0%}")
         print("\n  The binding limiter is whichever column is smallest.")
-        print("  64 regs/thread halves blocks (8 -> 4); 50 KB smem caps at 6 by SRAM.")
+        print("  64 regs/thread halves blocks (8 -> 4); 50 KB smem caps at 2 by SRAM (16 warps, 33%).")
 
     _run()
     return

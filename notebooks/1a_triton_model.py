@@ -249,9 +249,11 @@ def _(mo):
 
     `BLOCK_SIZE` is special. It is a **compile-time constant**, declared in the kernel
     signature as `BLOCK_SIZE: tl.constexpr`. Marking it `constexpr` lets Triton's compiler
-    bake the value into the generated code — it can unroll loops, size register tiles, and
-    pick the number of warps per program based on it. (It is also what `tl.arange(0,
-    BLOCK_SIZE)` needs: the range length must be known at compile time.) Different
+    bake the value into the generated code — it can unroll loops and size register tiles.
+    (The number of warps per program is a *separate* knob, `num_warps` (default 4), set by
+    the programmer or autotuner; `BLOCK_SIZE` only sets how many elements those warps must
+    cover, not the warp count.) `constexpr` is also what `tl.arange(0, BLOCK_SIZE)` needs:
+    the range length must be known at compile time. Different
     `BLOCK_SIZE` values compile to *different* kernels, which is exactly what autotuning
     (`2a`) exploits.
 

@@ -246,10 +246,10 @@ def _(mo):
 
     ```cpp
     unsigned votes = __ballot_sync(FULL, x > 0.0f);   // bit i set iff lane i has x>0
-    int count = __popcount(votes);                    // how many lanes voted yes
+    int count = __popc(votes);                        // how many lanes voted yes
     ```
 
-    `__popcount` (population count) then turns the bitmask into a tally — a warp-wide
+    `__popc` (population count) then turns the bitmask into a tally — a warp-wide
     count in two instructions, no shared memory. This is the engine behind **stream
     compaction** (each lane finds its output slot by counting set bits below it) and
     histogram-style kernels.
@@ -403,7 +403,7 @@ def _(mo):
     - **Mind the mask.** Every lane in the participation mask must execute the intrinsic;
       use `__activemask()` after divergence. It's the warp-level version of the
       all-threads-hit-the-barrier rule.
-    - **Votes are reductions too.** `__ballot_sync` + `__popcount` count predicates
+    - **Votes are reductions too.** `__ballot_sync` + `__popc` count predicates
       across a warp in two instructions — the basis of compaction and histograms.
     """)
     return

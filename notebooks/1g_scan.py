@@ -65,10 +65,6 @@ def _(mo):
     | inclusive $y_i$ | 3 | 4 | 8 | 9 | 14 |
     | exclusive $y_i$ | 0 | 3 | 4 | 8 | 9 |
 
-    Read off the relationship: the exclusive row is the inclusive row slid one cell to
-    the right with a $0$ in front, and adding $x_i$ back to the exclusive row recovers
-    the inclusive row.
-
     Nothing here is special to addition. Scan works for **any associative operator** —
     max, min, product, bitwise-or, even matrix multiply. That generality is why the
     pattern is called an **associative scan**; **cumsum is just the sum instance**.
@@ -349,9 +345,8 @@ def _(mo):
     - **Blelloch** — $\text{work} \approx 2N$ (optimal order), $\text{depth} \approx
       2\log_2 N$ (still log, ~2× HS).
 
-    Watch the contrast: Hillis-Steele crushes the serial *depth* but pays for it in
-    *work*; Blelloch buys the $O(N)$ work back at the price of roughly double the depth
-    of Hillis-Steele. There is no free lunch — only which axis you'd rather spend.
+    Each algorithm spends one axis to save the other — which one you'd rather spend is
+    the whole choice.
     """)
     return
 

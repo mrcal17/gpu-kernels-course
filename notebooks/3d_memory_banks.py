@@ -179,8 +179,9 @@ def _(mo):
 
     Shared memory (the `3b` scratchpad) has its own parallel-access rule. It is physically
     divided into **32 banks**, interleaved by 4-byte word: address $a$ (in 4-byte words)
-    lives in bank $a \bmod 32$. The 32 banks can serve **32 different banks
-    simultaneously** in one cycle — that's what makes shared memory fast.
+    lives in bank $a \bmod 32$. The 32 banks can each serve one request
+    simultaneously — 32 distinct addresses (one per bank) in a single cycle —
+    that's what makes shared memory fast.
 
     $$\text{bank}(a) \;=\; a \bmod 32 \qquad (a \text{ in 4-byte words}).$$
 

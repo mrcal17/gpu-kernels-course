@@ -91,8 +91,8 @@ def _(mo):
     The lineage of what tensor cores natively accelerate:
 
     - **Ampere (3rd gen):** FP16 / BF16 / TF32, plus INT8/INT4 for inference.
-    - **Hopper (4th gen):** adds **FP8** (E4M3 / E5M2) and the *warpgroup* `wgmma`
-      instruction — a much larger MMA driven by a whole warpgroup.
+    - **Ada / Hopper (4th gen):** add **FP8** (E4M3 / E5M2); Hopper additionally adds the
+      *warpgroup* `wgmma` instruction — a much larger MMA driven by a whole warpgroup.
     - **Blackwell (5th gen):** adds **FP4 / FP6** narrow floats and **microscaling
       (MX) formats** (next section), roughly *doubling* low-precision throughput per SM
       versus the prior gen on the data-center part.
@@ -194,8 +194,8 @@ def _(mo):
     loses small values) but far cheaper than per-element FP16 (defeats the point). It's the
     same idea as the group-wise quantization you built in `2c`, standardized into a
     hardware format the 5th-gen tensor core reads directly. The supported MX variants
-    (MXFP8, MXFP6, MXFP4) and their exact block sizes are **version- and CC-dependent** —
-    confirm against the CUDA 13 docs for `sm_120`.
+    (MXFP8, MXFP6, MXFP4) and their exact block sizes are version- and CC-dependent
+    (verify per §6).
 
     > [Open Compute Project — OCP Microscaling (MX) Formats spec](https://www.opencompute.org/documents/ocp-microscaling-formats-mx-v1-0-spec-final-pdf)
     > defines E4M3/E5M2/E2M1 and the shared-scale block layout; the
@@ -250,7 +250,9 @@ def _(mo):
 
     Pick a compute format. The left panel shows what a fixed-magnitude signal looks like
     after rounding to that format's grid (precision); the right panel shows the
-    *illustrative* relative matrix throughput. The whole game of narrow-float kernels is
+    *illustrative* relative matrix throughput — note this panel is normalized
+    *within Blackwell* (FP16 = 1), unlike the cross-generation chart in §2 (Ampere FP16 = 1).
+    The whole game of narrow-float kernels is
     reading this picture: **how far right can I push throughput before the left panel's
     error breaks my model?** That answer is empirical — you measure accuracy on the real
     workload — which is why the capstone (`4b`) makes you benchmark *both* axes.
@@ -379,8 +381,7 @@ def _(mo):
 
     A caution: whether the Triton build for your CUDA 13.1 / `sm_120` setup emits TMA for
     a given kernel, and which TMA variants are legal on consumer `sm_120` versus
-    data-center parts, is **toolchain-version-dependent**. Check the Triton release notes
-    and the CUDA 13 PTX ISA for `cp.async.bulk.tensor` on your arch before assuming it.
+    data-center parts, is toolchain-version-dependent (verify per §6).
 
     > [CUDA C++ Programming Guide — Tensor Memory Accelerator](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#tensor-memory-accelerator)
     > and the [PTX ISA — `cp.async.bulk.tensor`](https://docs.nvidia.com/cuda/parallel-thread-execution/index.html)
@@ -465,12 +466,8 @@ def _(mo):
     and to what extent, **consumer `sm_120`** exposes cluster launch and distributed shared
     memory is **not something to assume**: it is gated by compute capability and CUDA
     version, and the consumer parts have historically been more limited here than the
-    H100/B200 line.
-
-    So the actionable rule is the theme of this whole lecture: **treat clusters/DSMEM as
-    "check the arch docs for `sm_120` on CUDA 13.1" before you design a kernel around
-    them.** Query the device, read the per-CC feature table, and confirm — don't port an
-    H100 cluster kernel to your 5070 Ti on faith.
+    H100/B200 line — so confirm against the arch docs (per §6) before you design a kernel
+    around them.
 
     > [CUDA C++ Programming Guide — Thread Block Clusters](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#thread-block-clusters)
     > and [Distributed Shared Memory](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#distributed-shared-memory)
@@ -548,8 +545,8 @@ def _(mo):
     There's no exercise for this lecture — it's the architectural context for the final
     project. You'll put it to work immediately in the capstone (`4b`):
 
-    - If you take the **quantized-GEMM** path, sections 2–3 (5th-gen tensor cores, FP8/FP4,
-      microscaling) are the menu of throughput levers you'll trade against accuracy.
+    - If you take the **quantized-GEMM** path, the §2–3 throughput levers above are the
+      menu you'll trade against accuracy.
     - Whichever path you take, section 6's "query → read CC table → confirm → measure"
       loop is exactly how you'll establish the roofline target you benchmark against.
 

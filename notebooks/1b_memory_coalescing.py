@@ -75,8 +75,8 @@ def _(mo):
 
     Global memory is not byte-addressable in hardware. The memory system services a warp's
     loads in **aligned transactions** — natural sizes are **32, 64, and 128 bytes**, and a
-    128-byte transaction is the common unit (it matches the L2 cache line and a full
-    warp's worth of float32). The key fact:
+    128-byte transaction is the common unit (it matches the L1/global cache line and a full
+    warp's worth of float32; L2/DRAM is accessed in finer 32-byte sectors). The key fact:
 
     > The hardware looks at the 32 addresses a warp's lanes request, finds the set of
     > aligned 128-byte segments they fall in, and issues **one transaction per distinct
@@ -369,7 +369,8 @@ def _():
             _gbps = (bytes_moved / _t) / 1e9
             print(f"  {_t_ms:>10.2f} {_gbps:>9.0f} {_gbps / PEAK:>9.0%}")
         print("\n  Same bytes; only the time changes. The fastest row (~0.6 ms) rides")
-        print("  the coalesced ceiling; the 8 ms row is what a stride-8 pattern costs.")
+        print("  the coalesced ceiling; the 8 ms row is what a badly strided")
+        print("  (worse than stride-8) pattern costs.")
 
     _run()
     return
