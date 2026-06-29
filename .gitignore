@@ -1,0 +1,16 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+.marimo.toml
+# nvcc build artifacts from the CUDA exercises
+*.exe
+*.exp
+*.lib
+*.obj
+*.pdb
+build/
+.cache/
+# editor
+.vscode/
+.idea/

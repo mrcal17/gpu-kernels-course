@@ -1,0 +1,7 @@
+# Pyodide-safe deps for the LECTURE notebooks + the WASM site build.
+# Notebooks must run in the browser, so: numpy / scipy / matplotlib only.
+# (The exercise harness uses your local GPU stack -- see requirements-exercises.txt.)
+marimo==0.23.9
+numpy
+scipy
+matplotlib

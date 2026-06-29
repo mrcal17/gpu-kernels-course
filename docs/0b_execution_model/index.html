@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="./favicon.ico" />
+    <!-- Preload is necessary because we show these images when we disconnect from the server,
+    but at that point we cannot load these images from the server -->
+    <link rel="preload" href="../assets/gradient-yHQUC_QB.png" as="image" />
+    <link rel="preload" href="../assets/noise-60BoTA8O.png" as="image" />
+    <!-- Preload the fonts -->
+    <link rel="preload" href="../assets/Lora-VariableFont_wght-CZceb_kH.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
+    <link rel="preload" href="../assets/PTSans-Regular-Bam3NpBI.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
+    <link rel="preload" href="../assets/PTSans-Bold-C_DwAp7Z.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
+    <link rel="preload" href="../assets/FiraMono-Regular-CEsLFVD9.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
+    <link rel="preload" href="../assets/FiraMono-Medium-D5MAsWEG.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
+    <link rel="preload" href="../assets/FiraMono-Bold-C6PDArdf.woff2" as="font" type="font/woff2" crossorigin="anonymous" />
+
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#000000" />
+    <meta name="description" content="a marimo app" />
+    <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <link rel="manifest" href="./manifest.json" />
+
+    <script data-marimo="true">
+      function __resizeIframe(obj) {
+        const scrollbarHeight = 20; // Max between windows, mac, and linux
+
+        function setHeight() {
+          // Guard against race condition where iframe isn't ready
+          if (!obj.contentWindow?.document?.documentElement) {
+            return;
+          }
+          const element = obj.contentWindow.document.documentElement;
+          // If there is no vertical scrollbar, we don't need to resize the iframe
+          if (element.scrollHeight === element.clientHeight) {
+            return;
+          }
+
+          // Create a new height that includes the scrollbar height if it's visible
+          const hasHorizontalScrollbar = element.scrollWidth > element.clientWidth;
+          const newHeight = element.scrollHeight + (hasHorizontalScrollbar ? scrollbarHeight : 0);
+
+          // Only update the height if it's different from the current height
+          if (obj.style.height !== `${newHeight}px`) {
+            obj.style.height = `${newHeight}px`;
+          }
+        }
+
+        // Resize the iframe to the height of the content and bottom scrollbar height
+        setHeight();
+
+        // Resize the iframe when the content changes
+        const resizeObserver = new ResizeObserver((_entries) => {
+          setHeight();
+        });
+        // Only observe if iframe content is ready
+        if (obj.contentWindow?.document?.body) {
+          resizeObserver.observe(obj.contentWindow.document.body);
+        }
+      }
+    </script>
+    <marimo-filename hidden>notebook.py</marimo-filename>
+    <!-- TODO(Trevor): Legacy, required by VS Code plugin. Remove when plugin is updated (see marimo/server/_templates/template.py) -->
+    <marimo-version data-version="{{ version }}" hidden></marimo-version>
+    <marimo-user-config data-config="{{ user_config }}" hidden></marimo-user-config>
+    <marimo-server-token data-token="{{ server_token }}" hidden></marimo-server-token>
+    <!-- /TODO -->
+    <title>0b execution model</title>
+    <script type="module" crossorigin src="../assets/index-awsLWRjZ.js"></script>
+    <link rel="modulepreload" crossorigin href="../assets/preload-helper-BPPi7vOr.js">
+    <link rel="modulepreload" crossorigin href="../assets/chunk-LvLJmgfZ.js">
+    <link rel="modulepreload" crossorigin href="../assets/react-Bj1aDYRI.js">
+    <link rel="modulepreload" crossorigin href="../assets/compiler-runtime-B3qBwwSJ.js">
+    <link rel="modulepreload" crossorigin href="../assets/jsx-runtime-BqBOg78p.js">
+    <link rel="modulepreload" crossorigin href="../assets/useEventListener-DvoEXWke.js">
+    <link rel="modulepreload" crossorigin href="../assets/defaultLocale-BLUna9fQ.js">
+    <link rel="modulepreload" crossorigin href="../assets/precisionRound-Cl9k9ZmS.js">
+    <link rel="modulepreload" crossorigin href="../assets/defaultLocale-DzliDDTm.js">
+    <link rel="modulepreload" crossorigin href="../assets/vega-loader.browser-C8wT63Va.js">
+    <link rel="modulepreload" crossorigin href="../assets/utils-DCL4n9wx.js">
+    <link rel="modulepreload" crossorigin href="../assets/clsx-Dz_KRrWq.js">
+    <link rel="modulepreload" crossorigin href="../assets/cn-DCUzRj2J.js">
+    <link rel="modulepreload" crossorigin href="../assets/badge-j3NGjqhR.js">
+    <link rel="modulepreload" crossorigin href="../assets/button-BbCh-29a.js">
+    <link rel="modulepreload" crossorigin href="../assets/react-dom-CSu739Rf.js">
+    <link rel="modulepreload" crossorigin href="../assets/fullscreen-eipL3i3Y.js">
+    <link rel="modulepreload" crossorigin href="../assets/menu-items-DcP01QzW.js">
+    <link rel="modulepreload" crossorigin href="../assets/dist-BdyjRhEt.js">
+    <link rel="modulepreload" crossorigin href="../assets/createLucideIcon-D5guW7EU.js">
+    <link rel="modulepreload" crossorigin href="../assets/check-BH35Ndha.js">
+    <link rel="modulepreload" crossorigin href="../assets/x-C-6liIBr.js">
+    <link rel="modulepreload" crossorigin href="../assets/select-DZcFyKFQ.js">
+    <link rel="modulepreload" crossorigin href="../assets/tooltip-DTV9tlSr.js">
+    <link rel="modulepreload" crossorigin href="../assets/use-toast-IPAtJGea.js">
+    <link rel="modulepreload" crossorigin href="../assets/useEvent-D91BmmQi.js">
+    <link rel="modulepreload" crossorigin href="../assets/invariant-BUdrueMv.js">
+    <link rel="modulepreload" crossorigin href="../assets/isObject-DvLSfCY5.js">
+    <link rel="modulepreload" crossorigin href="../assets/_baseFor-DKD1r8uL.js">
+    <link rel="modulepreload" crossorigin href="../assets/merge-_9WLTEyt.js">
+    <link rel="modulepreload" crossorigin href="../assets/zod-H_cgTO0M.js">
+    <link rel="modulepreload" crossorigin href="../assets/utils-CvI-39U6.js">
+    <link rel="modulepreload" crossorigin href="../assets/Deferred-CP7vq682.js">
+    <link rel="modulepreload" crossorigin href="../assets/uuid-e9lSomwA.js">
+    <link rel="modulepreload" crossorigin href="../assets/DeferredRequestRegistry-CNldVcrP.js">
+    <link rel="modulepreload" crossorigin href="../assets/constants-DMpttj8Q.js">
+    <link rel="modulepreload" crossorigin href="../assets/session-0B5NBztP.js">
+    <link rel="modulepreload" crossorigin href="../assets/config-ClMcu_sV.js">
+    <link rel="modulepreload" crossorigin href="../assets/requests-DIwGYs0l.js">
+    <link rel="modulepreload" crossorigin href="../assets/useLifecycle-DieWOfXE.js">
+    <link rel="modulepreload" crossorigin href="../assets/useNonce-DfoVjkkH.js">
+    <link rel="modulepreload" crossorigin href="../assets/useTheme-CI2eq4XN.js">
+    <link rel="modulepreload" crossorigin href="../assets/arrays-DYDL-3-i.js">
+    <link rel="modulepreload" crossorigin href="../assets/strings-wdPMRf6Z.js">
+    <link rel="modulepreload" crossorigin href="../assets/once-DRroIaBz.js">
+    <link rel="modulepreload" crossorigin href="../assets/capabilities-A_KhFcGV.js">
+    <link rel="modulepreload" crossorigin href="../assets/createReducer-CI9qeK_X.js">
+    <link rel="modulepreload" crossorigin href="../assets/paths-D5zczhUD.js">
+    <link rel="modulepreload" crossorigin href="../assets/dist-BrR4M-k3.js">
+    <link rel="modulepreload" crossorigin href="../assets/dist-HlsDto3K.js">
+    <link rel="modulepreload" crossorigin href="../assets/dist-CHcznzB-.js">
+    <link rel="modulepreload" crossorigin href="../assets/dist-B1U1kGCR.js">
+    <link rel="modulepreload" crossorigin href="../assets/dist-ChF5Ln9c.js">
+    <link rel="modulepreload" crossorigin href="../assets/dist-CpTFpfm_.js">
+    <link rel="modulepreload" crossorigin href="../assets/dist-CBSMxaO_.js">
+    <link rel="modulepreload" crossorigin href="../assets/dist-CPczQFlJ.js">
+    <link rel="modulepreload" crossorigin href="../assets/dist-C9ZB41s2.js">
+    <link rel="modulepreload" crossorigin href="../assets/stex-BGrE-q7N.js">
+    <link rel="modulepreload" crossorigin href="../assets/toDate-B5A0DFEz.js">
+    <link rel="modulepreload" crossorigin href="../assets/purify.es-B9KxLTTS.js">
+    <link rel="modulepreload" crossorigin href="../assets/cjs-BRGiG41H.js">
+    <link rel="modulepreload" crossorigin href="../assets/isSymbol-BT6B8Bon.js">
+    <link rel="modulepreload" crossorigin href="../assets/now-CsYTPAhW.js">
+    <link rel="modulepreload" crossorigin href="../assets/debounce-DhnxH9Rh.js">
+    <link rel="modulepreload" crossorigin href="../assets/database-zap-kIkTfzTX.js">
+    <link rel="modulepreload" crossorigin href="../assets/main-B0OX4z33.js">
+    <link rel="modulepreload" crossorigin href="../assets/cells-BsaJrRWi.js">
+    <link rel="modulepreload" crossorigin href="../assets/ErrorBoundary-DyYDV0HI.js">
+    <link rel="modulepreload" crossorigin href="../assets/kbd-CTUAEnEx.js">
+    <link rel="modulepreload" crossorigin href="../assets/useInstallPackage-DUF4IRRI.js">
+    <link rel="modulepreload" crossorigin href="../assets/alert-dialog-BqFLkbUc.js">
+    <link rel="modulepreload" crossorigin href="../assets/dialog-DzC_QCtT.js">
+    <link rel="modulepreload" crossorigin href="../assets/useDebounce-7xZwVnnu.js">
+    <link rel="modulepreload" crossorigin href="../assets/numbers-C3BAdHZE.js">
+    <link rel="modulepreload" crossorigin href="../assets/SSRProvider-CkFAAHXw.js">
+    <link rel="modulepreload" crossorigin href="../assets/context-QkTujrKn.js">
+    <link rel="modulepreload" crossorigin href="../assets/useNumberFormatter-ByUv-u9o.js">
+    <link rel="modulepreload" crossorigin href="../assets/usePress-DQ_tAz5W.js">
+    <link rel="modulepreload" crossorigin href="../assets/input-C3Hrdlqq.js">
+    <link rel="modulepreload" crossorigin href="../assets/ImperativeModal-B3Th7k4R.js">
+    <link rel="modulepreload" crossorigin href="../assets/cell-link-B1pHtGWp.js">
+    <link rel="modulepreload" crossorigin href="../assets/multi-map-CUuNtzHt.js">
+    <link rel="modulepreload" crossorigin href="../assets/alert-yTS3WpF4.js">
+    <link rel="modulepreload" crossorigin href="../assets/chevron-right-CG5QYXYk.js">
+    <link rel="modulepreload" crossorigin href="../assets/dropdown-menu-CR7cnzLX.js">
+    <link rel="modulepreload" crossorigin href="../assets/links-D1JoyKTt.js">
+    <link rel="modulepreload" crossorigin href="../assets/useRunCells-BiCBGyeW.js">
+    <link rel="modulepreload" crossorigin href="../assets/copy-LK56fFow.js">
+    <link rel="modulepreload" crossorigin href="../assets/copy-BwrPA9zQ.js">
+    <link rel="modulepreload" crossorigin href="../assets/copy-icon-OjtDb4gO.js">
+    <link rel="modulepreload" crossorigin href="../assets/RenderHTML-ChwPJgPd.js">
+    <link rel="modulepreload" crossorigin href="../assets/datasource-DjDpJnbt.js">
+    <link rel="modulepreload" crossorigin href="../assets/state-D-2KaAHK.js">
+    <link rel="modulepreload" crossorigin href="../assets/package-Tv6ztuzw.js">
+    <link rel="modulepreload" crossorigin href="../assets/sparkles-lWUAsPhp.js">
+    <link rel="modulepreload" crossorigin href="../assets/MarimoErrorOutput-B0h5OVW9.js">
+    <link rel="modulepreload" crossorigin href="../assets/spinner-Bhir8k53.js">
+    <link rel="modulepreload" crossorigin href="../assets/html-to-image-BWL3Ct4n.js">
+    <link rel="modulepreload" crossorigin href="../assets/focus-q38vUCl-.js">
+    <link rel="modulepreload" crossorigin href="../assets/useAsyncData-bgszE9F0.js">
+    <link rel="modulepreload" crossorigin href="../assets/LazyAnyLanguageCodeMirror-BEvXb3VX.js">
+    <link rel="modulepreload" crossorigin href="../assets/micromark-factory-space-BygYYKhs.js">
+    <link rel="modulepreload" crossorigin href="../assets/chunk-5FQGJX7Z-D9iBG0F7.js">
+    <link rel="modulepreload" crossorigin href="../assets/markdown-renderer-CU5Lbyax.js">
+    <link rel="modulepreload" crossorigin href="../assets/command-KARR7KMq.js">
+    <link rel="modulepreload" crossorigin href="../assets/field-zLmMOSA4.js">
+    <link rel="modulepreload" crossorigin href="../assets/popover-Bz_0Vkyf.js">
+    <link rel="modulepreload" crossorigin href="../assets/errors-vr57w7Ul.js">
+    <link rel="modulepreload" crossorigin href="../assets/download-DT8gf0PL.js">
+    <link rel="modulepreload" crossorigin href="../assets/table-BGPSHfig.js">
+    <link rel="modulepreload" crossorigin href="../assets/useIframeCapabilities-CcI1zSdn.js">
+    <link rel="modulepreload" crossorigin href="../assets/error-banner-LdWZDbqd.js">
+    <link rel="modulepreload" crossorigin href="../assets/formats-b7Sf6DAK.js">
+    <link rel="modulepreload" crossorigin href="../assets/en-US-Cb8rIK52.js">
+    <link rel="modulepreload" crossorigin href="../assets/isValid-CklTTytn.js">
+    <link rel="modulepreload" crossorigin href="../assets/dates-CTxr0EqQ.js">
+    <link rel="modulepreload" crossorigin href="../assets/maps-n3GaPJwv.js">
+    <link rel="modulepreload" crossorigin href="../assets/extends-BiFDv3jB.js">
+    <link rel="modulepreload" crossorigin href="../assets/emotion-is-prop-valid.esm-C59xfSYt.js">
+    <link rel="modulepreload" crossorigin href="../assets/useDateFormatter-ICIDGgHf.js">
+    <link rel="modulepreload" crossorigin href="../assets/react-icons.esm-BNzu6e7h.js">
+    <link rel="modulepreload" crossorigin href="../assets/RSPContexts-CdN1NyAt.js">
+    <link rel="modulepreload" crossorigin href="../assets/table-6NxtGaCm.js">
+    <link rel="modulepreload" crossorigin href="../assets/ellipsis-KAhMaCIV.js">
+    <link rel="modulepreload" crossorigin href="../assets/external-link-BTNxSavU.js">
+    <link rel="modulepreload" crossorigin href="../assets/message-circle-CWm2KnSx.js">
+    <link rel="modulepreload" crossorigin href="../assets/plus-BgB18UzY.js">
+    <link rel="modulepreload" crossorigin href="../assets/trash-2-rVklqqFF.js">
+    <link rel="modulepreload" crossorigin href="../assets/react-resizable-panels.browser.esm-CV8-hvjx.js">
+    <link rel="modulepreload" crossorigin href="../assets/JsonOutput-BJaeXQim.js">
+    <link rel="modulepreload" crossorigin href="../assets/chart-no-axes-column-nqk474t8.js">
+    <link rel="modulepreload" crossorigin href="../assets/square-function-uY_yJr5g.js">
+    <link rel="modulepreload" crossorigin href="../assets/spec-CPQR_o92.js">
+    <link rel="modulepreload" crossorigin href="../assets/ellipsis-vertical-CkwWkOQL.js">
+    <link rel="modulepreload" crossorigin href="../assets/refresh-cw-DHwG4Mac.js">
+    <link rel="modulepreload" crossorigin href="../assets/tree-actions-BM_EJr3E.js">
+    <link rel="modulepreload" crossorigin href="../assets/components-BzBUxUz0.js">
+    <link rel="modulepreload" crossorigin href="../assets/column-preview-BPismotx.js">
+    <link rel="modulepreload" crossorigin href="../assets/icons-Ol38nIbL.js">
+    <link rel="modulepreload" crossorigin href="../assets/radio-group-DlVSuZ_1.js">
+    <link rel="modulepreload" crossorigin href="../assets/floating-outline-BN9sAcQ0.js">
+    <link rel="modulepreload" crossorigin href="../assets/objectWithoutPropertiesLoose-DfWeGRFv.js">
+    <link rel="modulepreload" crossorigin href="../assets/esm-CqWdmSnV.js">
+    <link rel="modulepreload" crossorigin href="../assets/readonly-python-code-D3_kHsDx.js">
+    <link rel="modulepreload" crossorigin href="../assets/file-headphone-BrQspHac.js">
+    <link rel="modulepreload" crossorigin href="../assets/file-BrdxGLRX.js">
+    <link rel="modulepreload" crossorigin href="../assets/image-DQHXdEQn.js">
+    <link rel="modulepreload" crossorigin href="../assets/file-icons-BiMOJy0r.js">
+    <link rel="modulepreload" crossorigin href="../assets/switch-BiU_sAcn.js">
+    <link rel="modulepreload" crossorigin href="../assets/events-CPoJAfgx.js">
+    <link rel="modulepreload" crossorigin href="../assets/globals-7JnRMGd4.js">
+    <link rel="modulepreload" crossorigin href="../assets/share-DMwTZOTH.js">
+    <link rel="modulepreload" crossorigin href="../assets/blob-Bgnx1kuY.js">
+    <link rel="modulepreload" crossorigin href="../assets/memoize-Tp7rARFe.js">
+    <link rel="modulepreload" crossorigin href="../assets/get-C-qh_et5.js">
+    <link rel="modulepreload" crossorigin href="../assets/_baseSet-CxV9N1bc.js">
+    <link rel="modulepreload" crossorigin href="../assets/state-BTTshiKq.js">
+    <link rel="modulepreload" crossorigin href="../assets/label-xHqFtfdz.js">
+    <link rel="modulepreload" crossorigin href="../assets/textarea-DwltG8V6.js">
+    <link rel="modulepreload" crossorigin href="../assets/refresh-ccw-C-n2VFP5.js">
+    <link rel="modulepreload" crossorigin href="../assets/form-BtBTvVVd.js">
+    <link rel="modulepreload" crossorigin href="../assets/renderShortcut-CcFk3m01.js">
+    <link rel="modulepreload" crossorigin href="../assets/useBoolean-Bp18o6XG.js">
+    <link rel="modulepreload" crossorigin href="../assets/useDeepCompareMemoize-zUHU--0D.js">
+    <link rel="modulepreload" crossorigin href="../assets/types-W8WWuumF.js">
+    <link rel="modulepreload" crossorigin href="../assets/semaphore-FlZezxaf.js">
+    <link rel="modulepreload" crossorigin href="../assets/fileToBase64-DZfwJMrG.js">
+    <link rel="modulepreload" crossorigin href="../assets/pathUtils-CJjndqMI.js">
+    <link rel="modulepreload" crossorigin href="../assets/prop-types-DaaA-ptl.js">
+    <link rel="modulepreload" crossorigin href="../assets/es-DGgq-Wes.js">
+    <link rel="modulepreload" crossorigin href="../assets/hasIn-DiS_ryrS.js">
+    <link rel="modulepreload" crossorigin href="../assets/flatten-Dl4V1ub3.js">
+    <link rel="modulepreload" crossorigin href="../assets/pick-DqWUNly1.js">
+    <link rel="modulepreload" crossorigin href="../assets/code-xml-CZN6vNxu.js">
+    <link rel="modulepreload" crossorigin href="../assets/house-mGK3v0Mm.js">
+    <link rel="modulepreload" crossorigin href="../assets/square-B5xWCt0a.js">
+    <link rel="modulepreload" crossorigin href="../assets/triangle-alert-D2p96PEF.js">
+    <link rel="modulepreload" crossorigin href="../assets/bundle.esm-DjhGJy4I.js">
+    <link rel="stylesheet" crossorigin href="../assets/cells-jmgGt1lS.css">
+    <link rel="stylesheet" crossorigin href="../assets/markdown-renderer-DdDKmWlR.css">
+    <link rel="stylesheet" crossorigin href="../assets/JsonOutput-B7vuddcd.css">
+    <link rel="stylesheet" crossorigin href="../assets/index-BIw7BKLH.css">
+  <marimo-wasm hidden=""></marimo-wasm>
+    <script>
+        if (window.location.protocol === 'file:') {
+            alert('Warning: This file must be served by an HTTP server to function correctly.');
+        }
+    </script>
+    
+    <style>
+        #save-button {
+            display: none !important;
+        }
+        #filename-input {
+            display: none !important;
+        }
+    </style>
+    
+<script data-marimo="true">
+    Object.defineProperty(window, "__MARIMO_EXPORT_CONTEXT__", {
+        value: Object.freeze({
+            trusted: true,
+            notebookCode: "import marimo\n\n__generated_with = \"0.23.9\"\napp = marimo.App(width=\"medium\")\n\n\n@app.cell\ndef _():\n    import marimo as mo\n\n    return (mo,)\n\n\n@app.cell(hide_code=True)\ndef _(mo):\n    mo.md(r\"\"\"\n    # 0B: The Execution Model\n\n    \u003E *\"A CPU is a sports car; a GPU is a freight train. The train is slower to start,\n    \u003E but it moves a thousand tonnes at once.\"*\n\n    Before a single kernel makes sense you need the mental model of **how the GPU runs\n    your code**. This is the most important lecture in the course \u2014 everything later\n    is a corollary. We will build it from one design decision: the GPU is built to\n    **hide latency with parallelism**, not to minimize it.\n    \"\"\")\n    return\n\n\n@app.cell(hide_code=True)\ndef _(mo):\n    mo.md(r\"\"\"\n    ---\n\n    ## 1. Throughput, not latency\n\n    A CPU core spends most of its transistors making *one* stream of instructions\n    finish fast: big caches, branch prediction, out-of-order execution. It hates\n    waiting.\n\n    A GPU makes the opposite bet. It has thousands of simple lanes and *expects* to\n    wait \u2014 a load from DRAM costs hundreds of cycles. Instead of avoiding the stall,\n    it **parks the stalled work and runs other work**. With enough independent work\n    resident, the memory latency is completely hidden behind useful computation.\n\n    So the GPU's whole personality is: **oversubscribe me.** Give me far more\n    parallel work than I have lanes, and I will keep the lanes busy while memory\n    catches up. A kernel that does *not* give it enough parallel work leaves the\n    machine idle \u2014 this is the failure mode you will learn to recognize.\n\n    \u003E [PMPP](https://shop.elsevier.com/books/programming-massively-parallel-processors/hwu/978-0-323-91231-0)\n    \u003E Ch. 1\u20134 develops this latency-hiding model in depth.\n    \"\"\")\n    return\n\n\n@app.cell(hide_code=True)\ndef _(mo):\n    mo.md(r\"\"\"\n    ---\n\n    ## 2. The thread hierarchy\n\n    Your kernel is launched as a **grid** of **thread blocks**, each block a group of\n    **threads**. Threads are scheduled in hardware bundles of 32 called **warps**.\n\n    $$\\underbrace{\\text{thread}}_{\\text{1 lane}}\n      \\;\\xrightarrow{\\times 32}\\;\n      \\underbrace{\\text{warp}}_{\\text{lockstep}}\n      \\;\\xrightarrow{}\\;\n      \\underbrace{\\text{block}}_{\\le 1024 \\text{ threads}}\n      \\;\\xrightarrow{}\\;\n      \\underbrace{\\text{grid}}_{\\text{your whole launch}}$$\n\n    The contract:\n\n    - **Threads in a block** can cooperate: they share **shared memory** and can\n      **synchronize** (`__syncthreads()` / a Triton barrier). A block runs entirely\n      on **one SM**.\n    - **Blocks are independent.** Different blocks may run in any order, on any SM,\n      possibly not at the same time. You may *not* assume two blocks run together or\n      synchronize globally within a launch.\n    - **Warps** are the real unit of execution: 32 threads issuing the *same*\n      instruction together (next section).\n\n    On your card: a block is at most **1024 threads** (32 warps), and an SM holds up\n    to **1536 resident threads** (48 warps) drawn from one or more blocks.\n    \"\"\")\n    return\n\n\n@app.cell\ndef _():\n    def _run():\n        import matplotlib.pyplot as plt\n        import matplotlib.patches as mpatches\n\n        _fig, _ax = plt.subplots(figsize=(8, 3.6))\n        _ax.set_xlim(0, 10)\n        _ax.set_ylim(0, 4)\n        _ax.axis(\"off\")\n        _ax.set_title(\"Grid -\u003E Blocks -\u003E Warps -\u003E Threads\")\n\n        # grid box\n        _ax.add_patch(mpatches.Rectangle(\n            (0.1, 0.2), 9.8, 3.6, fill=False, edgecolor=\"#333\", linewidth=2))\n        _ax.text(0.25, 3.55, \"grid\", color=\"#333\", fontsize=11, weight=\"bold\")\n\n        # blocks\n        for _b in range(3):\n            _x = 0.5 + _b * 3.1\n            _ax.add_patch(mpatches.Rectangle((_x, 0.6), 2.7, 2.7,\n                          fill=True, facecolor=\"#eef3ff\", edgecolor=\"#5b8def\", linewidth=1.5))\n            _ax.text(_x + 0.1, 3.05, f\"block {_b}\", color=\"#3060c0\", fontsize=9, weight=\"bold\")\n            # warps inside a block\n            for _w in range(2):\n                _wy = 0.85 + _w * 1.05\n                _ax.add_patch(mpatches.Rectangle((_x + 0.15, _wy), 2.4, 0.8,\n                              fill=True, facecolor=\"#dff0e4\", edgecolor=\"#4c9f70\"))\n                _ax.text(_x + 0.25, _wy + 0.55, f\"warp = 32 threads\", color=\"#2e6b48\", fontsize=7)\n                # threads as ticks\n                for _t in range(16):\n                    _ax.add_patch(mpatches.Rectangle((_x + 0.2 + _t * 0.145, _wy + 0.08), 0.1, 0.28,\n                                  fill=True, facecolor=\"#4c9f70\", edgecolor=\"none\"))\n        _fig.tight_layout()\n        return _fig\n\n    _run()\n    return\n\n\n@app.cell(hide_code=True)\ndef _(mo):\n    mo.md(r\"\"\"\n    ---\n\n    ## 3. Mapping onto the SMs\n\n    The GPU is a grid of **Streaming Multiprocessors (SMs)** \u2014 your card has **70**.\n    The hardware scheduler hands blocks to SMs. An SM runs as many resident blocks as\n    its limits allow, interleaving their warps cycle-by-cycle. When one warp stalls on\n    a load, the SM issues from another ready warp **in the same cycle** \u2014 that is the\n    latency hiding from \u00a71, made concrete.\n\n    This is why you launch *thousands* of blocks for a big array even though there are\n    only 70 SMs: the extra blocks queue up, and the surplus of resident warps is\n    exactly what keeps the lanes fed. **More independent warps resident = more latency\n    hidden.** The fraction of the SM's warp capacity you actually fill is called\n    **occupancy**, and we devote `0d` to it.\n\n    \u003E A block is sticky to one SM for its whole life (so its threads can share memory\n    \u003E and sync). Blocks themselves are fire-and-forget across the 70 SMs.\n    \"\"\")\n    return\n\n\n@app.cell(hide_code=True)\ndef _(mo):\n    mo.md(r\"\"\"\n    ---\n\n    ## 4. SIMT: warps execute in lockstep\n\n    The 32 threads of a warp share **one instruction stream** \u2014 Single Instruction,\n    Multiple Thread. In the same cycle all 32 lanes execute the same instruction on\n    their own data. This is why warp size pervades everything.\n\n    The catch is **branch divergence**. If a data-dependent `if` sends some lanes down\n    the `then` path and others down the `else`, the warp cannot do both at once \u2014 the\n    hardware executes *both* paths and masks off the inactive lanes each time:\n\n    $$\\text{warp time} \\;\\approx\\; \\text{time}(\\text{then}) + \\text{time}(\\text{else})\n      \\quad\\text{when the warp diverges}$$\n\n    A branch that is *uniform across the warp* (all 32 lanes agree) is free \u2014 no\n    divergence. The lesson you will apply in every kernel: **structure work so a\n    warp's 32 lanes follow the same path and touch contiguous data.** The worked\n    example below shows the cost.\n    \"\"\")\n    return\n\n\n@app.cell\ndef _():\n    def _run():\n        import numpy as np\n\n        print(\"=== Divergence cost in a 32-lane warp ===\")\n        print(\"Branch taken by lanes where (lane_id % stride == 0):\\n\")\n        for _stride in [1, 2, 4, 32]:\n            _lanes = np.arange(32)\n            _take = (_lanes % _stride == 0)\n            _n_then = int(_take.sum())\n            # If any lane takes 'then' and any takes 'else', both paths run.\n            _diverges = (0 \u003C _n_then \u003C 32)\n            _cost = \"BOTH paths run (masked)\" if _diverges else \"uniform -\u003E 1 path (free)\"\n            print(f\"  stride={_stride:2d}:  {_n_then:2d}/32 lanes take 'then'  -\u003E  {_cost}\")\n\n        print(\"\\nTakeaway: make the whole warp agree, or keep per-lane work identical.\")\n\n    _run()\n    return\n\n\n@app.cell(hide_code=True)\ndef _(mo):\n    mo.md(r\"\"\"\n    ---\n\n    ## 5. The launch boundary\n\n    Kernels run on the **device**; you configure and launch them from the **host**.\n    A launch specifies the **grid** (how many blocks) and the **block** (how many\n    threads each). In CUDA C++ that is `kernel\u003C\u003C\u003Cgrid, block\u003E\u003E\u003E(args)`; in Triton you\n    pass a `grid` and the framework derives the block from your `BLOCK_SIZE`.\n\n    Two facts to carry forward:\n\n    1. **You choose the decomposition.** How you map your data onto grid/block\n       coordinates *is* the kernel design. Get it wrong and you serialize or diverge.\n    2. **Launches are asynchronous and not free.** The CPU queues the kernel and moves\n       on; a kernel launch costs microseconds of overhead. Tiny kernels are dominated\n       by launch + memory traffic, not math \u2014 which is why we *fuse* operations later.\n\n    The canonical 1-D mapping (you will write it in exercise `e01`):\n\n    ```python\n    # one program (block) handles BLOCK_SIZE contiguous elements\n    pid   = program_id(0)                 # which block am I?\n    offs  = pid * BLOCK_SIZE + arange(0, BLOCK_SIZE)\n    mask  = offs \u003C n_elements             # guard the ragged last block\n    grid  = ceil_div(n_elements, BLOCK_SIZE)   # this many blocks\n    ```\n    \"\"\")\n    return\n\n\n@app.cell(hide_code=True)\ndef _(mo):\n    mo.md(r\"\"\"\n    ---\n\n    ## 6. Worked example: choosing a block size\n\n    Suppose you launch over $N = 1\\,000\\,000$ elements with a block of `BLOCK_SIZE`\n    threads. Drag the slider. Watch three things:\n\n    - **#blocks** = $\\lceil N / \\text{BLOCK\\_SIZE}\\rceil$ \u2014 must cover all elements.\n    - **warps/block** = $\\text{BLOCK\\_SIZE}/32$ \u2014 should divide evenly (no wasted lanes).\n    - **occupancy** (threads-only model) = resident warps / 48, capped by the SM's\n      1536-thread and up-to-32-blocks-per-SM (sm_120) limits.\n\n    Occupancy here ignores registers and shared memory \u2014 the *other* two limiters,\n    covered in `0d`. Even so, notice block sizes that aren't multiples of 32 waste\n    lanes, and very small blocks can't fill the SM.\n    \"\"\")\n    return\n\n\n@app.cell\ndef _(mo):\n    block_slider = mo.ui.slider(start=32, stop=1024, step=32, value=256,\n                                label=\"BLOCK_SIZE (threads/block)\")\n    block_slider\n    return (block_slider,)\n\n\n@app.cell\ndef _(block_slider):\n    def _run():\n        import numpy as np\n        import matplotlib.pyplot as plt\n\n        N = 1_000_000\n        MAX_THREADS_SM = 1536      # your 5070 Ti\n        MAX_BLOCKS_SM = 32         # typical per-SM block cap\n        WARPS_CAP = MAX_THREADS_SM // 32   # 48\n\n        def occupancy(tpb):\n            # resident blocks limited by thread budget AND block-count cap\n            by_threads = MAX_THREADS_SM // tpb\n            resident_blocks = max(0, min(by_threads, MAX_BLOCKS_SM))\n            resident_warps = resident_blocks * (tpb // 32)\n            return resident_warps / WARPS_CAP\n\n        tpb = int(block_slider.value)\n        n_blocks = -(-N // tpb)            # ceil div\n        warps_per_block = tpb / 32\n\n        xs = np.arange(32, 1025, 32)\n        ys = [occupancy(int(x)) for x in xs]\n\n        _fig, _ax = plt.subplots(figsize=(7.5, 3.4))\n        _ax.plot(xs, ys, color=\"#5b8def\", linewidth=2)\n        _ax.axvline(tpb, color=\"#d65f5f\", linestyle=\"--\")\n        _ax.scatter([tpb], [occupancy(tpb)], color=\"#d65f5f\", zorder=5)\n        _ax.set_xlabel(\"BLOCK_SIZE (threads/block)\")\n        _ax.set_ylabel(\"occupancy (threads-only)\")\n        _ax.set_ylim(0, 1.05)\n        _ax.set_title(\n            f\"BLOCK_SIZE={tpb}:  {n_blocks:,} blocks,  \"\n            f\"{warps_per_block:.1f} warps/block,  occ={occupancy(tpb):.0%}\"\n        )\n        _fig.tight_layout()\n        return _fig\n\n    _run()\n    return\n\n\n@app.cell(hide_code=True)\ndef _(mo):\n    mo.md(r\"\"\"\n    ---\n\n    ## Why this matters for the kernels you'll write\n\n    - **Launch enough work.** A grid with too few blocks starves the 70 SMs and the\n      latency-hiding collapses. When in doubt, more independent blocks.\n    - **Think in warps of 32.** Block sizes that are multiples of 32, contiguous data\n      per warp, uniform branches. Coalescing (`1b`) is the same idea applied to memory.\n    - **Avoid divergence on the hot path.** Push data-dependent branches out of the\n      inner loop, or make them warp-uniform.\n    - **Fuse to amortize launch + traffic.** Many tiny kernels lose to one fused one.\n\n    Hold these four and most \"why is my kernel slow?\" questions answer themselves.\n    \"\"\")\n    return\n\n\n@app.cell(hide_code=True)\ndef _(mo):\n    mo.md(r\"\"\"\n    ---\n\n    ### Now go write it\n\n    The next lecture (`0c`) drills into the memory hierarchy, but the execution model\n    is best cemented by *doing*. Once you've read `1a` (the Triton programming model),\n    open the terminal and write your first kernel:\n\n    ```bash\n    python -m harness.runner e01 --watch\n    ```\n\n    `e01` is vector-add \u2014 the \"hello world\" that forces you to use `program_id`, build\n    an index range, mask the ragged tail, and choose a launch grid. Everything in this\n    lecture, in ~10 lines you write yourself.\n    \"\"\")\n    return\n\n\n@app.cell(hide_code=True)\ndef _(mo):\n    mo.md(r\"\"\"\n    ---\n\n    [\u0026#8593; Course home](../) \u0026nbsp;|\u0026nbsp; \u0026#8592; Prev: [0A: Orientation](../0a_orientation/) \u0026nbsp;|\u0026nbsp; Next: [0C: Memory Hierarchy](../0c_memory_hierarchy/) \u0026#8594;\n    \"\"\")\n    return\n\n\nif __name__ == \"__main__\":\n    app.run()\n",
+        }),
+        writable: false,
+        configurable: false,
+    });
+</script>
+<marimo-code hidden="">import%20marimo%0A%0A__generated_with%20%3D%20%220.23.9%22%0Aapp%20%3D%20marimo.App(width%3D%22medium%22)%0A%0A%0A%40app.cell%0Adef%20_()%3A%0A%20%20%20%20import%20marimo%20as%20mo%0A%0A%20%20%20%20return%20(mo%2C)%0A%0A%0A%40app.cell(hide_code%3DTrue)%0Adef%20_(mo)%3A%0A%20%20%20%20mo.md(r%22%22%22%0A%20%20%20%20%23%200B%3A%20The%20Execution%20Model%0A%0A%20%20%20%20%3E%20*%22A%20CPU%20is%20a%20sports%20car%3B%20a%20GPU%20is%20a%20freight%20train.%20The%20train%20is%20slower%20to%20start%2C%0A%20%20%20%20%3E%20but%20it%20moves%20a%20thousand%20tonnes%20at%20once.%22*%0A%0A%20%20%20%20Before%20a%20single%20kernel%20makes%20sense%20you%20need%20the%20mental%20model%20of%20**how%20the%20GPU%20runs%0A%20%20%20%20your%20code**.%20This%20is%20the%20most%20important%20lecture%20in%20the%20course%20%E2%80%94%20everything%20later%0A%20%20%20%20is%20a%20corollary.%20We%20will%20build%20it%20from%20one%20design%20decision%3A%20the%20GPU%20is%20built%20to%0A%20%20%20%20**hide%20latency%20with%20parallelism**%2C%20not%20to%20minimize%20it.%0A%20%20%20%20%22%22%22)%0A%20%20%20%20return%0A%0A%0A%40app.cell(hide_code%3DTrue)%0Adef%20_(mo)%3A%0A%20%20%20%20mo.md(r%22%22%22%0A%20%20%20%20---%0A%0A%20%20%20%20%23%23%201.%20Throughput%2C%20not%20latency%0A%0A%20%20%20%20A%20CPU%20core%20spends%20most%20of%20its%20transistors%20making%20*one*%20stream%20of%20instructions%0A%20%20%20%20finish%20fast%3A%20big%20caches%2C%20branch%20prediction%2C%20out-of-order%20execution.%20It%20hates%0A%20%20%20%20waiting.%0A%0A%20%20%20%20A%20GPU%20makes%20the%20opposite%20bet.%20It%20has%20thousands%20of%20simple%20lanes%20and%20*expects*%20to%0A%20%20%20%20wait%20%E2%80%94%20a%20load%20from%20DRAM%20costs%20hundreds%20of%20cycles.%20Instead%20of%20avoiding%20the%20stall%2C%0A%20%20%20%20it%20**parks%20the%20stalled%20work%20and%20runs%20other%20work**.%20With%20enough%20independent%20work%0A%20%20%20%20resident%2C%20the%20memory%20latency%20is%20completely%20hidden%20behind%20useful%20computation.%0A%0A%20%20%20%20So%20the%20GPU's%20whole%20personality%20is%3A%20**oversubscribe%20me.**%20Give%20me%20far%20more%0A%20%20%20%20parallel%20work%20than%20I%20have%20lanes%2C%20and%20I%20will%20keep%20the%20lanes%20busy%20while%20memory%0A%20%20%20%20catches%20up.%20A%20kernel%20that%20does%20*not*%20give%20it%20enough%20parallel%20work%20leaves%20the%0A%20%20%20%20machine%20idle%20%E2%80%94%20this%20is%20the%20failure%20mode%20you%20will%20learn%20to%20recognize.%0A%0A%20%20%20%20%3E%20%5BPMPP%5D(https%3A%2F%2Fshop.elsevier.com%2Fbooks%2Fprogramming-massively-parallel-processors%2Fhwu%2F978-0-323-91231-0)%0A%20%20%20%20%3E%20Ch.%201%E2%80%934%20develops%20this%20latency-hiding%20model%20in%20depth.%0A%20%20%20%20%22%22%22)%0A%20%20%20%20return%0A%0A%0A%40app.cell(hide_code%3DTrue)%0Adef%20_(mo)%3A%0A%20%20%20%20mo.md(r%22%22%22%0A%20%20%20%20---%0A%0A%20%20%20%20%23%23%202.%20The%20thread%20hierarchy%0A%0A%20%20%20%20Your%20kernel%20is%20launched%20as%20a%20**grid**%20of%20**thread%20blocks**%2C%20each%20block%20a%20group%20of%0A%20%20%20%20**threads**.%20Threads%20are%20scheduled%20in%20hardware%20bundles%20of%2032%20called%20**warps**.%0A%0A%20%20%20%20%24%24%5Cunderbrace%7B%5Ctext%7Bthread%7D%7D_%7B%5Ctext%7B1%20lane%7D%7D%0A%20%20%20%20%20%20%5C%3B%5Cxrightarrow%7B%5Ctimes%2032%7D%5C%3B%0A%20%20%20%20%20%20%5Cunderbrace%7B%5Ctext%7Bwarp%7D%7D_%7B%5Ctext%7Blockstep%7D%7D%0A%20%20%20%20%20%20%5C%3B%5Cxrightarrow%7B%7D%5C%3B%0A%20%20%20%20%20%20%5Cunderbrace%7B%5Ctext%7Bblock%7D%7D_%7B%5Cle%201024%20%5Ctext%7B%20threads%7D%7D%0A%20%20%20%20%20%20%5C%3B%5Cxrightarrow%7B%7D%5C%3B%0A%20%20%20%20%20%20%5Cunderbrace%7B%5Ctext%7Bgrid%7D%7D_%7B%5Ctext%7Byour%20whole%20launch%7D%7D%24%24%0A%0A%20%20%20%20The%20contract%3A%0A%0A%20%20%20%20-%20**Threads%20in%20a%20block**%20can%20cooperate%3A%20they%20share%20**shared%20memory**%20and%20can%0A%20%20%20%20%20%20**synchronize**%20(%60__syncthreads()%60%20%2F%20a%20Triton%20barrier).%20A%20block%20runs%20entirely%0A%20%20%20%20%20%20on%20**one%20SM**.%0A%20%20%20%20-%20**Blocks%20are%20independent.**%20Different%20blocks%20may%20run%20in%20any%20order%2C%20on%20any%20SM%2C%0A%20%20%20%20%20%20possibly%20not%20at%20the%20same%20time.%20You%20may%20*not*%20assume%20two%20blocks%20run%20together%20or%0A%20%20%20%20%20%20synchronize%20globally%20within%20a%20launch.%0A%20%20%20%20-%20**Warps**%20are%20the%20real%20unit%20of%20execution%3A%2032%20threads%20issuing%20the%20*same*%0A%20%20%20%20%20%20instruction%20together%20(next%20section).%0A%0A%20%20%20%20On%20your%20card%3A%20a%20block%20is%20at%20most%20**1024%20threads**%20(32%20warps)%2C%20and%20an%20SM%20holds%20up%0A%20%20%20%20to%20**1536%20resident%20threads**%20(48%20warps)%20drawn%20from%20one%20or%20more%20blocks.%0A%20%20%20%20%22%22%22)%0A%20%20%20%20return%0A%0A%0A%40app.cell%0Adef%20_()%3A%0A%20%20%20%20def%20_run()%3A%0A%20%20%20%20%20%20%20%20import%20matplotlib.pyplot%20as%20plt%0A%20%20%20%20%20%20%20%20import%20matplotlib.patches%20as%20mpatches%0A%0A%20%20%20%20%20%20%20%20_fig%2C%20_ax%20%3D%20plt.subplots(figsize%3D(8%2C%203.6))%0A%20%20%20%20%20%20%20%20_ax.set_xlim(0%2C%2010)%0A%20%20%20%20%20%20%20%20_ax.set_ylim(0%2C%204)%0A%20%20%20%20%20%20%20%20_ax.axis(%22off%22)%0A%20%20%20%20%20%20%20%20_ax.set_title(%22Grid%20-%3E%20Blocks%20-%3E%20Warps%20-%3E%20Threads%22)%0A%0A%20%20%20%20%20%20%20%20%23%20grid%20box%0A%20%20%20%20%20%20%20%20_ax.add_patch(mpatches.Rectangle(%0A%20%20%20%20%20%20%20%20%20%20%20%20(0.1%2C%200.2)%2C%209.8%2C%203.6%2C%20fill%3DFalse%2C%20edgecolor%3D%22%23333%22%2C%20linewidth%3D2))%0A%20%20%20%20%20%20%20%20_ax.text(0.25%2C%203.55%2C%20%22grid%22%2C%20color%3D%22%23333%22%2C%20fontsize%3D11%2C%20weight%3D%22bold%22)%0A%0A%20%20%20%20%20%20%20%20%23%20blocks%0A%20%20%20%20%20%20%20%20for%20_b%20in%20range(3)%3A%0A%20%20%20%20%20%20%20%20%20%20%20%20_x%20%3D%200.5%20%2B%20_b%20*%203.1%0A%20%20%20%20%20%20%20%20%20%20%20%20_ax.add_patch(mpatches.Rectangle((_x%2C%200.6)%2C%202.7%2C%202.7%2C%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20fill%3DTrue%2C%20facecolor%3D%22%23eef3ff%22%2C%20edgecolor%3D%22%235b8def%22%2C%20linewidth%3D1.5))%0A%20%20%20%20%20%20%20%20%20%20%20%20_ax.text(_x%20%2B%200.1%2C%203.05%2C%20f%22block%20%7B_b%7D%22%2C%20color%3D%22%233060c0%22%2C%20fontsize%3D9%2C%20weight%3D%22bold%22)%0A%20%20%20%20%20%20%20%20%20%20%20%20%23%20warps%20inside%20a%20block%0A%20%20%20%20%20%20%20%20%20%20%20%20for%20_w%20in%20range(2)%3A%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20_wy%20%3D%200.85%20%2B%20_w%20*%201.05%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20_ax.add_patch(mpatches.Rectangle((_x%20%2B%200.15%2C%20_wy)%2C%202.4%2C%200.8%2C%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20fill%3DTrue%2C%20facecolor%3D%22%23dff0e4%22%2C%20edgecolor%3D%22%234c9f70%22))%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20_ax.text(_x%20%2B%200.25%2C%20_wy%20%2B%200.55%2C%20f%22warp%20%3D%2032%20threads%22%2C%20color%3D%22%232e6b48%22%2C%20fontsize%3D7)%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%23%20threads%20as%20ticks%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20for%20_t%20in%20range(16)%3A%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20_ax.add_patch(mpatches.Rectangle((_x%20%2B%200.2%20%2B%20_t%20*%200.145%2C%20_wy%20%2B%200.08)%2C%200.1%2C%200.28%2C%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20fill%3DTrue%2C%20facecolor%3D%22%234c9f70%22%2C%20edgecolor%3D%22none%22))%0A%20%20%20%20%20%20%20%20_fig.tight_layout()%0A%20%20%20%20%20%20%20%20return%20_fig%0A%0A%20%20%20%20_run()%0A%20%20%20%20return%0A%0A%0A%40app.cell(hide_code%3DTrue)%0Adef%20_(mo)%3A%0A%20%20%20%20mo.md(r%22%22%22%0A%20%20%20%20---%0A%0A%20%20%20%20%23%23%203.%20Mapping%20onto%20the%20SMs%0A%0A%20%20%20%20The%20GPU%20is%20a%20grid%20of%20**Streaming%20Multiprocessors%20(SMs)**%20%E2%80%94%20your%20card%20has%20**70**.%0A%20%20%20%20The%20hardware%20scheduler%20hands%20blocks%20to%20SMs.%20An%20SM%20runs%20as%20many%20resident%20blocks%20as%0A%20%20%20%20its%20limits%20allow%2C%20interleaving%20their%20warps%20cycle-by-cycle.%20When%20one%20warp%20stalls%20on%0A%20%20%20%20a%20load%2C%20the%20SM%20issues%20from%20another%20ready%20warp%20**in%20the%20same%20cycle**%20%E2%80%94%20that%20is%20the%0A%20%20%20%20latency%20hiding%20from%20%C2%A71%2C%20made%20concrete.%0A%0A%20%20%20%20This%20is%20why%20you%20launch%20*thousands*%20of%20blocks%20for%20a%20big%20array%20even%20though%20there%20are%0A%20%20%20%20only%2070%20SMs%3A%20the%20extra%20blocks%20queue%20up%2C%20and%20the%20surplus%20of%20resident%20warps%20is%0A%20%20%20%20exactly%20what%20keeps%20the%20lanes%20fed.%20**More%20independent%20warps%20resident%20%3D%20more%20latency%0A%20%20%20%20hidden.**%20The%20fraction%20of%20the%20SM's%20warp%20capacity%20you%20actually%20fill%20is%20called%0A%20%20%20%20**occupancy**%2C%20and%20we%20devote%20%600d%60%20to%20it.%0A%0A%20%20%20%20%3E%20A%20block%20is%20sticky%20to%20one%20SM%20for%20its%20whole%20life%20(so%20its%20threads%20can%20share%20memory%0A%20%20%20%20%3E%20and%20sync).%20Blocks%20themselves%20are%20fire-and-forget%20across%20the%2070%20SMs.%0A%20%20%20%20%22%22%22)%0A%20%20%20%20return%0A%0A%0A%40app.cell(hide_code%3DTrue)%0Adef%20_(mo)%3A%0A%20%20%20%20mo.md(r%22%22%22%0A%20%20%20%20---%0A%0A%20%20%20%20%23%23%204.%20SIMT%3A%20warps%20execute%20in%20lockstep%0A%0A%20%20%20%20The%2032%20threads%20of%20a%20warp%20share%20**one%20instruction%20stream**%20%E2%80%94%20Single%20Instruction%2C%0A%20%20%20%20Multiple%20Thread.%20In%20the%20same%20cycle%20all%2032%20lanes%20execute%20the%20same%20instruction%20on%0A%20%20%20%20their%20own%20data.%20This%20is%20why%20warp%20size%20pervades%20everything.%0A%0A%20%20%20%20The%20catch%20is%20**branch%20divergence**.%20If%20a%20data-dependent%20%60if%60%20sends%20some%20lanes%20down%0A%20%20%20%20the%20%60then%60%20path%20and%20others%20down%20the%20%60else%60%2C%20the%20warp%20cannot%20do%20both%20at%20once%20%E2%80%94%20the%0A%20%20%20%20hardware%20executes%20*both*%20paths%20and%20masks%20off%20the%20inactive%20lanes%20each%20time%3A%0A%0A%20%20%20%20%24%24%5Ctext%7Bwarp%20time%7D%20%5C%3B%5Capprox%5C%3B%20%5Ctext%7Btime%7D(%5Ctext%7Bthen%7D)%20%2B%20%5Ctext%7Btime%7D(%5Ctext%7Belse%7D)%0A%20%20%20%20%20%20%5Cquad%5Ctext%7Bwhen%20the%20warp%20diverges%7D%24%24%0A%0A%20%20%20%20A%20branch%20that%20is%20*uniform%20across%20the%20warp*%20(all%2032%20lanes%20agree)%20is%20free%20%E2%80%94%20no%0A%20%20%20%20divergence.%20The%20lesson%20you%20will%20apply%20in%20every%20kernel%3A%20**structure%20work%20so%20a%0A%20%20%20%20warp's%2032%20lanes%20follow%20the%20same%20path%20and%20touch%20contiguous%20data.**%20The%20worked%0A%20%20%20%20example%20below%20shows%20the%20cost.%0A%20%20%20%20%22%22%22)%0A%20%20%20%20return%0A%0A%0A%40app.cell%0Adef%20_()%3A%0A%20%20%20%20def%20_run()%3A%0A%20%20%20%20%20%20%20%20import%20numpy%20as%20np%0A%0A%20%20%20%20%20%20%20%20print(%22%3D%3D%3D%20Divergence%20cost%20in%20a%2032-lane%20warp%20%3D%3D%3D%22)%0A%20%20%20%20%20%20%20%20print(%22Branch%20taken%20by%20lanes%20where%20(lane_id%20%25%20stride%20%3D%3D%200)%3A%5Cn%22)%0A%20%20%20%20%20%20%20%20for%20_stride%20in%20%5B1%2C%202%2C%204%2C%2032%5D%3A%0A%20%20%20%20%20%20%20%20%20%20%20%20_lanes%20%3D%20np.arange(32)%0A%20%20%20%20%20%20%20%20%20%20%20%20_take%20%3D%20(_lanes%20%25%20_stride%20%3D%3D%200)%0A%20%20%20%20%20%20%20%20%20%20%20%20_n_then%20%3D%20int(_take.sum())%0A%20%20%20%20%20%20%20%20%20%20%20%20%23%20If%20any%20lane%20takes%20'then'%20and%20any%20takes%20'else'%2C%20both%20paths%20run.%0A%20%20%20%20%20%20%20%20%20%20%20%20_diverges%20%3D%20(0%20%3C%20_n_then%20%3C%2032)%0A%20%20%20%20%20%20%20%20%20%20%20%20_cost%20%3D%20%22BOTH%20paths%20run%20(masked)%22%20if%20_diverges%20else%20%22uniform%20-%3E%201%20path%20(free)%22%0A%20%20%20%20%20%20%20%20%20%20%20%20print(f%22%20%20stride%3D%7B_stride%3A2d%7D%3A%20%20%7B_n_then%3A2d%7D%2F32%20lanes%20take%20'then'%20%20-%3E%20%20%7B_cost%7D%22)%0A%0A%20%20%20%20%20%20%20%20print(%22%5CnTakeaway%3A%20make%20the%20whole%20warp%20agree%2C%20or%20keep%20per-lane%20work%20identical.%22)%0A%0A%20%20%20%20_run()%0A%20%20%20%20return%0A%0A%0A%40app.cell(hide_code%3DTrue)%0Adef%20_(mo)%3A%0A%20%20%20%20mo.md(r%22%22%22%0A%20%20%20%20---%0A%0A%20%20%20%20%23%23%205.%20The%20launch%20boundary%0A%0A%20%20%20%20Kernels%20run%20on%20the%20**device**%3B%20you%20configure%20and%20launch%20them%20from%20the%20**host**.%0A%20%20%20%20A%20launch%20specifies%20the%20**grid**%20(how%20many%20blocks)%20and%20the%20**block**%20(how%20many%0A%20%20%20%20threads%20each).%20In%20CUDA%20C%2B%2B%20that%20is%20%60kernel%3C%3C%3Cgrid%2C%20block%3E%3E%3E(args)%60%3B%20in%20Triton%20you%0A%20%20%20%20pass%20a%20%60grid%60%20and%20the%20framework%20derives%20the%20block%20from%20your%20%60BLOCK_SIZE%60.%0A%0A%20%20%20%20Two%20facts%20to%20carry%20forward%3A%0A%0A%20%20%20%201.%20**You%20choose%20the%20decomposition.**%20How%20you%20map%20your%20data%20onto%20grid%2Fblock%0A%20%20%20%20%20%20%20coordinates%20*is*%20the%20kernel%20design.%20Get%20it%20wrong%20and%20you%20serialize%20or%20diverge.%0A%20%20%20%202.%20**Launches%20are%20asynchronous%20and%20not%20free.**%20The%20CPU%20queues%20the%20kernel%20and%20moves%0A%20%20%20%20%20%20%20on%3B%20a%20kernel%20launch%20costs%20microseconds%20of%20overhead.%20Tiny%20kernels%20are%20dominated%0A%20%20%20%20%20%20%20by%20launch%20%2B%20memory%20traffic%2C%20not%20math%20%E2%80%94%20which%20is%20why%20we%20*fuse*%20operations%20later.%0A%0A%20%20%20%20The%20canonical%201-D%20mapping%20(you%20will%20write%20it%20in%20exercise%20%60e01%60)%3A%0A%0A%20%20%20%20%60%60%60python%0A%20%20%20%20%23%20one%20program%20(block)%20handles%20BLOCK_SIZE%20contiguous%20elements%0A%20%20%20%20pid%20%20%20%3D%20program_id(0)%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%23%20which%20block%20am%20I%3F%0A%20%20%20%20offs%20%20%3D%20pid%20*%20BLOCK_SIZE%20%2B%20arange(0%2C%20BLOCK_SIZE)%0A%20%20%20%20mask%20%20%3D%20offs%20%3C%20n_elements%20%20%20%20%20%20%20%20%20%20%20%20%20%23%20guard%20the%20ragged%20last%20block%0A%20%20%20%20grid%20%20%3D%20ceil_div(n_elements%2C%20BLOCK_SIZE)%20%20%20%23%20this%20many%20blocks%0A%20%20%20%20%60%60%60%0A%20%20%20%20%22%22%22)%0A%20%20%20%20return%0A%0A%0A%40app.cell(hide_code%3DTrue)%0Adef%20_(mo)%3A%0A%20%20%20%20mo.md(r%22%22%22%0A%20%20%20%20---%0A%0A%20%20%20%20%23%23%206.%20Worked%20example%3A%20choosing%20a%20block%20size%0A%0A%20%20%20%20Suppose%20you%20launch%20over%20%24N%20%3D%201%5C%2C000%5C%2C000%24%20elements%20with%20a%20block%20of%20%60BLOCK_SIZE%60%0A%20%20%20%20threads.%20Drag%20the%20slider.%20Watch%20three%20things%3A%0A%0A%20%20%20%20-%20**%23blocks**%20%3D%20%24%5Clceil%20N%20%2F%20%5Ctext%7BBLOCK%5C_SIZE%7D%5Crceil%24%20%E2%80%94%20must%20cover%20all%20elements.%0A%20%20%20%20-%20**warps%2Fblock**%20%3D%20%24%5Ctext%7BBLOCK%5C_SIZE%7D%2F32%24%20%E2%80%94%20should%20divide%20evenly%20(no%20wasted%20lanes).%0A%20%20%20%20-%20**occupancy**%20(threads-only%20model)%20%3D%20resident%20warps%20%2F%2048%2C%20capped%20by%20the%20SM's%0A%20%20%20%20%20%201536-thread%20and%20up-to-32-blocks-per-SM%20(sm_120)%20limits.%0A%0A%20%20%20%20Occupancy%20here%20ignores%20registers%20and%20shared%20memory%20%E2%80%94%20the%20*other*%20two%20limiters%2C%0A%20%20%20%20covered%20in%20%600d%60.%20Even%20so%2C%20notice%20block%20sizes%20that%20aren't%20multiples%20of%2032%20waste%0A%20%20%20%20lanes%2C%20and%20very%20small%20blocks%20can't%20fill%20the%20SM.%0A%20%20%20%20%22%22%22)%0A%20%20%20%20return%0A%0A%0A%40app.cell%0Adef%20_(mo)%3A%0A%20%20%20%20block_slider%20%3D%20mo.ui.slider(start%3D32%2C%20stop%3D1024%2C%20step%3D32%2C%20value%3D256%2C%0A%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20%20label%3D%22BLOCK_SIZE%20(threads%2Fblock)%22)%0A%20%20%20%20block_slider%0A%20%20%20%20return%20(block_slider%2C)%0A%0A%0A%40app.cell%0Adef%20_(block_slider)%3A%0A%20%20%20%20def%20_run()%3A%0A%20%20%20%20%20%20%20%20import%20numpy%20as%20np%0A%20%20%20%20%20%20%20%20import%20matplotlib.pyplot%20as%20plt%0A%0A%20%20%20%20%20%20%20%20N%20%3D%201_000_000%0A%20%20%20%20%20%20%20%20MAX_THREADS_SM%20%3D%201536%20%20%20%20%20%20%23%20your%205070%20Ti%0A%20%20%20%20%20%20%20%20MAX_BLOCKS_SM%20%3D%2032%20%20%20%20%20%20%20%20%20%23%20typical%20per-SM%20block%20cap%0A%20%20%20%20%20%20%20%20WARPS_CAP%20%3D%20MAX_THREADS_SM%20%2F%2F%2032%20%20%20%23%2048%0A%0A%20%20%20%20%20%20%20%20def%20occupancy(tpb)%3A%0A%20%20%20%20%20%20%20%20%20%20%20%20%23%20resident%20blocks%20limited%20by%20thread%20budget%20AND%20block-count%20cap%0A%20%20%20%20%20%20%20%20%20%20%20%20by_threads%20%3D%20MAX_THREADS_SM%20%2F%2F%20tpb%0A%20%20%20%20%20%20%20%20%20%20%20%20resident_blocks%20%3D%20max(0%2C%20min(by_threads%2C%20MAX_BLOCKS_SM))%0A%20%20%20%20%20%20%20%20%20%20%20%20resident_warps%20%3D%20resident_blocks%20*%20(tpb%20%2F%2F%2032)%0A%20%20%20%20%20%20%20%20%20%20%20%20return%20resident_warps%20%2F%20WARPS_CAP%0A%0A%20%20%20%20%20%20%20%20tpb%20%3D%20int(block_slider.value)%0A%20%20%20%20%20%20%20%20n_blocks%20%3D%20-(-N%20%2F%2F%20tpb)%20%20%20%20%20%20%20%20%20%20%20%20%23%20ceil%20div%0A%20%20%20%20%20%20%20%20warps_per_block%20%3D%20tpb%20%2F%2032%0A%0A%20%20%20%20%20%20%20%20xs%20%3D%20np.arange(32%2C%201025%2C%2032)%0A%20%20%20%20%20%20%20%20ys%20%3D%20%5Boccupancy(int(x))%20for%20x%20in%20xs%5D%0A%0A%20%20%20%20%20%20%20%20_fig%2C%20_ax%20%3D%20plt.subplots(figsize%3D(7.5%2C%203.4))%0A%20%20%20%20%20%20%20%20_ax.plot(xs%2C%20ys%2C%20color%3D%22%235b8def%22%2C%20linewidth%3D2)%0A%20%20%20%20%20%20%20%20_ax.axvline(tpb%2C%20color%3D%22%23d65f5f%22%2C%20linestyle%3D%22--%22)%0A%20%20%20%20%20%20%20%20_ax.scatter(%5Btpb%5D%2C%20%5Boccupancy(tpb)%5D%2C%20color%3D%22%23d65f5f%22%2C%20zorder%3D5)%0A%20%20%20%20%20%20%20%20_ax.set_xlabel(%22BLOCK_SIZE%20(threads%2Fblock)%22)%0A%20%20%20%20%20%20%20%20_ax.set_ylabel(%22occupancy%20(threads-only)%22)%0A%20%20%20%20%20%20%20%20_ax.set_ylim(0%2C%201.05)%0A%20%20%20%20%20%20%20%20_ax.set_title(%0A%20%20%20%20%20%20%20%20%20%20%20%20f%22BLOCK_SIZE%3D%7Btpb%7D%3A%20%20%7Bn_blocks%3A%2C%7D%20blocks%2C%20%20%22%0A%20%20%20%20%20%20%20%20%20%20%20%20f%22%7Bwarps_per_block%3A.1f%7D%20warps%2Fblock%2C%20%20occ%3D%7Boccupancy(tpb)%3A.0%25%7D%22%0A%20%20%20%20%20%20%20%20)%0A%20%20%20%20%20%20%20%20_fig.tight_layout()%0A%20%20%20%20%20%20%20%20return%20_fig%0A%0A%20%20%20%20_run()%0A%20%20%20%20return%0A%0A%0A%40app.cell(hide_code%3DTrue)%0Adef%20_(mo)%3A%0A%20%20%20%20mo.md(r%22%22%22%0A%20%20%20%20---%0A%0A%20%20%20%20%23%23%20Why%20this%20matters%20for%20the%20kernels%20you'll%20write%0A%0A%20%20%20%20-%20**Launch%20enough%20work.**%20A%20grid%20with%20too%20few%20blocks%20starves%20the%2070%20SMs%20and%20the%0A%20%20%20%20%20%20latency-hiding%20collapses.%20When%20in%20doubt%2C%20more%20independent%20blocks.%0A%20%20%20%20-%20**Think%20in%20warps%20of%2032.**%20Block%20sizes%20that%20are%20multiples%20of%2032%2C%20contiguous%20data%0A%20%20%20%20%20%20per%20warp%2C%20uniform%20branches.%20Coalescing%20(%601b%60)%20is%20the%20same%20idea%20applied%20to%20memory.%0A%20%20%20%20-%20**Avoid%20divergence%20on%20the%20hot%20path.**%20Push%20data-dependent%20branches%20out%20of%20the%0A%20%20%20%20%20%20inner%20loop%2C%20or%20make%20them%20warp-uniform.%0A%20%20%20%20-%20**Fuse%20to%20amortize%20launch%20%2B%20traffic.**%20Many%20tiny%20kernels%20lose%20to%20one%20fused%20one.%0A%0A%20%20%20%20Hold%20these%20four%20and%20most%20%22why%20is%20my%20kernel%20slow%3F%22%20questions%20answer%20themselves.%0A%20%20%20%20%22%22%22)%0A%20%20%20%20return%0A%0A%0A%40app.cell(hide_code%3DTrue)%0Adef%20_(mo)%3A%0A%20%20%20%20mo.md(r%22%22%22%0A%20%20%20%20---%0A%0A%20%20%20%20%23%23%23%20Now%20go%20write%20it%0A%0A%20%20%20%20The%20next%20lecture%20(%600c%60)%20drills%20into%20the%20memory%20hierarchy%2C%20but%20the%20execution%20model%0A%20%20%20%20is%20best%20cemented%20by%20*doing*.%20Once%20you've%20read%20%601a%60%20(the%20Triton%20programming%20model)%2C%0A%20%20%20%20open%20the%20terminal%20and%20write%20your%20first%20kernel%3A%0A%0A%20%20%20%20%60%60%60bash%0A%20%20%20%20python%20-m%20harness.runner%20e01%20--watch%0A%20%20%20%20%60%60%60%0A%0A%20%20%20%20%60e01%60%20is%20vector-add%20%E2%80%94%20the%20%22hello%20world%22%20that%20forces%20you%20to%20use%20%60program_id%60%2C%20build%0A%20%20%20%20an%20index%20range%2C%20mask%20the%20ragged%20tail%2C%20and%20choose%20a%20launch%20grid.%20Everything%20in%20this%0A%20%20%20%20lecture%2C%20in%20~10%20lines%20you%20write%20yourself.%0A%20%20%20%20%22%22%22)%0A%20%20%20%20return%0A%0A%0A%40app.cell(hide_code%3DTrue)%0Adef%20_(mo)%3A%0A%20%20%20%20mo.md(r%22%22%22%0A%20%20%20%20---%0A%0A%20%20%20%20%5B%26%238593%3B%20Course%20home%5D(..%2F)%20%26nbsp%3B%7C%26nbsp%3B%20%26%238592%3B%20Prev%3A%20%5B0A%3A%20Orientation%5D(..%2F0a_orientation%2F)%20%26nbsp%3B%7C%26nbsp%3B%20Next%3A%20%5B0C%3A%20Memory%20Hierarchy%5D(..%2F0c_memory_hierarchy%2F)%20%26%238594%3B%0A%20%20%20%20%22%22%22)%0A%20%20%20%20return%0A%0A%0Aif%20__name__%20%3D%3D%20%22__main__%22%3A%0A%20%20%20%20app.run()%0A</marimo-code></head>
+  <body>
+    <div id="root"></div>
+    <!-- This is a portal for the data editor to render in -->
+    <div id="portal" data-testid="glide-portal" style="position: fixed; left: 0; top: 0; z-index: 9999"></div>
+    <script data-marimo="true">
+      Object.defineProperty(window, "__MARIMO_MOUNT_CONFIG__", {
+        value: Object.freeze({
+            "filename": "notebook.py",
+            "cwd": "",
+            "lspWorkspace": null,
+            "mode": "read",
+            "version": "0.23.9",
+            "serverToken": "unused",
+            "config": {"ai": {"custom_providers": {}, "enabled": true, "models": {"custom_models": [], "displayed_models": []}}, "completion": {"activate_on_typing": true, "auto_close_pairs": true, "copilot": false, "signature_hint_on_typing": false}, "diagnostics": {"sql_linter": true}, "display": {"cell_output": "below", "code_editor_font_size": 14, "dataframes": "rich", "default_table_max_columns": 50, "default_table_page_size": 10, "default_width": "medium", "reference_highlighting": true, "theme": "light"}, "formatting": {"line_length": 79}, "keymap": {"overrides": {}, "preset": "default"}, "language_servers": {"pylsp": {"enable_flake8": false, "enable_mypy": true, "enable_pydocstyle": false, "enable_pyflakes": false, "enable_pylint": false, "enable_ruff": true, "enabled": false}}, "mcp": {"mcpServers": {}, "presets": []}, "package_management": {"manager": "pip"}, "runtime": {"auto_instantiate": false, "auto_reload": "off", "default_csv_encoding": "utf-8", "default_sql_output": "auto", "on_cell_change": "autorun", "output_max_bytes": 8000000, "reactive_tests": true, "show_tracebacks": false, "std_stream_max_bytes": 1000000, "watcher_on_save": "lazy"}, "save": {"autosave": "off", "autosave_delay": 1000, "format_on_save": false}, "server": {"browser": "default", "follow_symlink": false}, "snippets": {"custom_paths": [], "include_default_snippets": true}},
+            "configOverrides": {},
+            "appConfig": {"sql_output": "auto", "width": "medium"},
+            "view": {"showAppCode": true},
+            "notebook": null,
+            "session": null,
+            "runtimeConfig": null,
+        }),
+        writable: false,
+        configurable: false,
+      });
+    </script>
+  </body>
+</html>
