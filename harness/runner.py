@@ -22,12 +22,20 @@ A spec.py must define:
 """
 import argparse
 import importlib.util
+import os
 import statistics
+import subprocess
 import sys
 import time
 from pathlib import Path
 
-import torch
+# torch is only needed for the Triton path. Import it lazily so that a
+# torch-less environment can still build and run pure-CUDA (kernel.cu)
+# exercises. The Triton branch checks `torch is not None` before using it.
+try:
+    import torch
+except Exception:  # pragma: no cover - depends on the host env
+    torch = None
 
 REPO = Path(__file__).resolve().parent.parent
 EXDIR = REPO / "exercises"
@@ -93,7 +101,135 @@ def _as_tuple(x):
     return x if isinstance(x, tuple) else (x,)
 
 
+# --------------------------------------------------------------------------
+# CUDA C++ path (kernel.cu + harness.cu, built with standalone nvcc)
+# --------------------------------------------------------------------------
+
+_VCVARS_FALLBACK = (
+    "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/"
+    "VC/Auxiliary/Build/vcvars64.bat"
+)
+
+
+def _find_vcvars() -> str:
+    """Locate vcvars64.bat so nvcc can find the MSVC host compiler.
+
+    Resolution order:
+      1. VCVARS env override (if set and the path exists).
+      2. vswhere -latest -products * -find VC\\Auxiliary\\Build\\vcvars64.bat
+      3. Hardcoded BuildTools 2022 fallback path.
+    Raises SystemExit if none exist.
+    """
+    # 1. Env override.
+    override = os.environ.get("VCVARS")
+    if override and Path(override).exists():
+        return override
+
+    # 2. vswhere.
+    pf86 = os.environ.get("ProgramFiles(x86)", "C:/Program Files (x86)")
+    vswhere = Path(pf86) / "Microsoft Visual Studio" / "Installer" / "vswhere.exe"
+    if vswhere.exists():
+        try:
+            proc = subprocess.run(
+                [
+                    str(vswhere),
+                    "-latest",
+                    "-products",
+                    "*",
+                    "-find",
+                    r"VC\Auxiliary\Build\vcvars64.bat",
+                ],
+                capture_output=True,
+                text=True,
+            )
+            for line in proc.stdout.splitlines():
+                line = line.strip()
+                if line and Path(line).exists():
+                    return line
+        except OSError:
+            pass
+
+    # 3. Hardcoded fallback.
+    if Path(_VCVARS_FALLBACK).exists():
+        return _VCVARS_FALLBACK
+
+    raise SystemExit("could not locate vcvars64.bat; set VCVARS")
+
+
+def _cuda_title(folder: Path) -> str:
+    """Read the title from the first `// TITLE: ...` line of harness.cu."""
+    harness = folder / "harness.cu"
+    try:
+        with harness.open("r", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                s = line.strip()
+                if s.startswith("// TITLE:"):
+                    return s[len("// TITLE:"):].strip()
+    except OSError:
+        pass
+    return folder.name
+
+
+def _run_cuda(folder: Path) -> bool:
+    """Build kernel.cu + harness.cu with nvcc and run the binary, relaying
+    its stdout (which already prints [TODO]/[PASS]/[FAIL]/[PERF])."""
+    title = _cuda_title(folder)
+    print(f"\n=== {folder.name}: {title} ===")
+
+    build_dir = folder / "build"
+    build_dir.mkdir(exist_ok=True)
+    exe = build_dir / "run.exe"
+
+    vcvars = _find_vcvars()
+    harness_cu = folder / "harness.cu"
+    kernel_cu = folder / "kernel.cu"
+
+    # Single `cmd /c` string. The inner command contains quoted paths, so the
+    # whole thing is wrapped in an extra pair of quotes (cmd /c "...") and the
+    # inner quotes are escaped for the Python string.
+    inner = (
+        f'"{vcvars}" >nul 2>&1 && '
+        f'nvcc -O3 -std=c++17 -arch=sm_120 '
+        f'"{harness_cu}" "{kernel_cu}" -o "{exe}"'
+    )
+    cmd = f'cmd /c "{inner}"'
+
+    # Always recompile: nvcc is fast for single-file programs and this avoids
+    # running a stale binary.
+    build = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    if build.returncode != 0:
+        # nvcc errors land in BOTH stdout and stderr; show the tail of both.
+        combined = (build.stdout or "") + (build.stderr or "")
+        tail = "\n".join(combined.splitlines()[-25:])
+        print("[FAIL] build error:")
+        print(tail)
+        return False
+
+    # Run the freshly built binary, relaying its stdout verbatim.
+    proc = subprocess.run(
+        [str(exe)], cwd=str(folder), capture_output=True, text=True
+    )
+    print(proc.stdout, end="")
+    if proc.returncode != 0:
+        # A nonzero exit means a CUDA_CHECK abort (or similar). Surface stderr.
+        if proc.stderr:
+            print(proc.stderr, end="")
+        return False
+    return "[PASS]" in proc.stdout
+
+
 def run_one(folder: Path) -> bool:
+    # Dispatch BEFORE loading spec.py: CUDA folders have no spec.py.
+    if (folder / "kernel.cu").exists():
+        return _run_cuda(folder)
+
+    if torch is None:
+        print(f"\n=== {folder.name} ===")
+        print("[ERROR] torch is required for Triton exercises but is not installed.")
+        return False
+    if not torch.cuda.is_available():
+        raise SystemExit("CUDA not available to PyTorch.")
+
     spec = _load(folder / "spec.py")
     title = getattr(spec, "TITLE", folder.name)
     print(f"\n=== {folder.name}: {title} ===")
@@ -162,7 +298,7 @@ def run_one(folder: Path) -> bool:
 
 
 def watch(folder: Path) -> None:
-    target = folder / "kernel.py"
+    target = folder / "kernel.cu" if (folder / "kernel.cu").exists() else folder / "kernel.py"
     print(f"Watching {target} -- save to re-run, Ctrl+C to stop.")
     last = 0.0
     while True:
@@ -190,8 +326,9 @@ def main() -> None:
     ap.add_argument("--all", action="store_true")
     args = ap.parse_args()
 
-    if not torch.cuda.is_available():
-        raise SystemExit("CUDA not available to PyTorch.")
+    # NOTE: the torch / CUDA-availability check now lives inside run_one's
+    # Triton branch, so pure-CUDA (kernel.cu) exercises run with only
+    # nvcc + MSVC -- no torch required.
 
     if args.all:
         folders = sorted(d for d in EXDIR.iterdir() if d.is_dir())

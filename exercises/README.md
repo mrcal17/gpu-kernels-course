@@ -38,9 +38,27 @@ compares to torch.
 | `e12` | quantized matmul | int8 dequant in the inner loop | TFLOP/s | 2c |
 | `e13` | fused SiLU + backward | `autograd.Function`, hand-written grad | bandwidth | 2d |
 
-## CUDA C++ (Part 3+)
-`c01`–`c06` re-derive these patterns in raw CUDA (compiled with `nvcc`). Scaffolded as
-you reach Part 3.
+## CUDA C++ (Part 3)
+Re-derive the Triton patterns in raw CUDA. Each is a `kernel.cu` you write (the
+`__global__` kernel + a `solve()` launcher); the provided `harness.cu` compiles it with
+`nvcc`, checks correctness against a host reference, and times it. Same runner, same
+`[TODO]`/`[PASS]`/`[PERF]`:
+
+```bash
+python -m harness.runner c01 --watch
+```
+
+| # | Exercise | Pattern | Metric | Lecture |
+|---|---|---|---|---|
+| `c01` | vector add | the nvcc build loop, launch config | GB/s | 3a |
+| `c02` | tiled matmul | shared-memory tiling by hand | TFLOP/s | 3b |
+| `c03` | warp reduce | warp-shuffle reduction | GB/s | 3c |
+| `c04` | transpose | bank-conflict-free shared memory | GB/s | 3d |
+| `c05` | pipelined matmul *(advanced)* | double-buffering / `cp.async` | TFLOP/s | 3f |
+| `c06` | WMMA matmul *(advanced)* | tensor cores (fp16) | TFLOP/s | 3g |
+
+**Requires** the CUDA Toolkit (`nvcc`) and, on Windows, MSVC (VS Build Tools) — the
+runner locates `vcvars64.bat` automatically (override with the `VCVARS` env var).
 
 > Stuck? The matching lecture has the concept; the README has layered hints. Resist the
 > urge to look anything up until you've tried — the point is to build the muscle.

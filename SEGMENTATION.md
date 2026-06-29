@@ -142,4 +142,4 @@ Part 0 is the hard prerequisite for everything.
       Fixed: solution-leaks in `1d`/`1e`/`1f`/`7a` (lectures had shipped full kernels — now blanked to
       `...`-style skeletons), harness `--watch` crash + mean/median + reference-ordering bugs, the
       per-SM block cap (now 32 across `0b`/`0d`/`3e`/`7a`), and the `e07` TF32 precision note.
-- ✅ exercises `e01`–`e13` scaffolded (stubs + specs + hints; all report `[TODO]`, references verified on-GPU); `c01`–`c06` outlined
+- ✅ exercises `e01`–`e13` (Triton) + `c01`–`c06` (CUDA C++) scaffolded as solution-free stubs; all load/compile + report `[TODO]`, verified on-GPU. CUDA path: `harness/runner.py` builds `kernel.cu`+`harness.cu` via `nvcc -arch=sm_120` (MSVC `vcvars64` auto-located through `vswhere`; `VCVARS` env override)
