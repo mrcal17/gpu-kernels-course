@@ -4,6 +4,9 @@ Learn to write GPU kernels from scratch: **Triton first** (Python-level, fast
 feedback), then **CUDA C++** (to the metal). Fundamentals → ML kernels. Built for, and
 tuned to, an **RTX 5070 Ti (Blackwell, sm_120)**.
 
+**▶ Live course site:** https://mrcal17.github.io/gpu-kernels-course/ — the lectures
+run in your browser (WASM); the exercises run locally on your GPU.
+
 Two tracks, by design:
 - **Lectures** — marimo notebooks in [`notebooks/`](notebooks/) that build intuition
   and visualize the ideas (run in-browser; they show kernel code without running it).
