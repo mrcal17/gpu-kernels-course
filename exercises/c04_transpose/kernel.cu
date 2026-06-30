@@ -16,15 +16,18 @@
 // exits without checking anything. Return 0 once you actually launch.
 
 __global__ void transpose_kernel(const float* in, float* out, int rows, int cols) {
-    // TODO: declare a __shared__ tile sized TILE x (TILE+1) — the +1 is the
-    //       bank-conflict fix (column neighbors land in consecutive banks).
+    // TODO: declare a __shared__ tile big enough to stage one block's worth of
+    //       data. A column read of an unpadded tile whose width is a multiple of
+    //       32 collides on one bank — adjust the inner dimension so column
+    //       neighbors fall in different banks.
     //
-    // TODO: compute the global (row, col) this thread READS from `in`. Lay the
-    //       block out so consecutive threadIdx.x walk consecutive `cols` — that
-    //       makes the global READ coalesced.
+    // TODO: compute the global (row, col) this thread reads from `in`. Arrange the
+    //       mapping so that, within a warp, consecutive threads read consecutive
+    //       global addresses — that is what makes the read coalesced.
     //
-    // TODO: store the loaded value into the shared tile at [threadIdx.y][threadIdx.x],
-    //       guarded by the edge check (rows/cols are NOT always multiples of TILE).
+    // TODO: store the loaded value into the staged tile, indexing it by this
+    //       thread's position within the block, guarded by the edge check
+    //       (rows/cols are NOT always multiples of the tile size).
     //
     // TODO: __syncthreads() so the entire staged tile has landed before anyone
     //       reads it back transposed.
@@ -34,13 +37,15 @@ __global__ void transpose_kernel(const float* in, float* out, int rows, int cols
     //       that consecutive threadIdx.x again walk consecutive output columns —
     //       keeping the global WRITE coalesced too.
     //
-    // TODO: read the shared tile with the indices SWAPPED ([threadIdx.x][threadIdx.y])
-    //       and write to `out`, guarded by the edge check.
+    // TODO: read the staged tile back transposed — i.e. with the two in-block
+    //       coordinates exchanged relative to how you stored it — and write to
+    //       `out`, guarded by the edge check.
 }
 
 extern "C" int solve(const float* d_in, float* d_out, int rows, int cols) {
-    // TODO: choose a square block dim3(TILE, TILE) and a 2-D grid that covers the
-    //       rows x cols input (ceil-div on each axis).
+    // TODO: pick a 2-D block whose threads map onto one tile, and size a 2-D grid
+    //       so the blocks cover the whole input even when a dimension isn't an
+    //       exact multiple of the tile.
     // TODO: launch transpose_kernel<<<grid, block>>>(d_in, d_out, rows, cols).
     // TODO: return 0 after launching (replace the `return 77;` sentinel).
     return 77;

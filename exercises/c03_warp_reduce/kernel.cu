@@ -23,8 +23,11 @@
 //
 // TODO: each thread accumulates a partial over a grid-stride range of d_in
 //       (so one launch covers any n).
-// TODO: reduce within the warp using __shfl_down_sync with delta = 16,8,4,2,1
-//       and the FULL_MASK = 0xffffffff participation mask.
+// TODO: fold the 32 lanes of a warp down into lane 0 using the down-shuffle
+//       intrinsic from lecture 3c. It's a log2(32)-step tree: at each step a
+//       lane adds in the value from a fixed offset above it. Derive the offset
+//       for each step (hint 2 in the README) and keep every lane in the
+//       participation mask so the warp stays converged through the whole fold.
 // TODO: lane 0 of each warp writes its partial to a small __shared__ array;
 //       __syncthreads().
 // TODO: have the first warp load those per-warp partials and warp-reduce again.

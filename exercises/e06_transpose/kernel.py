@@ -13,7 +13,9 @@ import triton.language as tl
 
 @triton.jit
 def transpose_kernel(
-    # TODO: x ptr, out ptr, M, N, strides, BLOCK_M: tl.constexpr, BLOCK_N: tl.constexpr
+    # TODO: declare the kernel parameters you need -- the two pointers, the matrix
+    #       dims, the strides for each tensor, and the tile sizes (think about which
+    #       params must be compile-time constants).
 ):
     # TODO: 2-D program ids -> this program owns a BLOCK_M x BLOCK_N tile of x
     # TODO: build row/col offset vectors, a 2-D mask for edge tiles
@@ -24,7 +26,11 @@ def transpose_kernel(
 def transpose(x: torch.Tensor) -> torch.Tensor:
     M, N = x.shape
     out = torch.empty((N, M), device=x.device, dtype=x.dtype)
-    # TODO: BLOCK_M, BLOCK_N; 2-D grid = (cdiv(M,BLOCK_M), cdiv(N,BLOCK_N));
-    #       pass strides for both x and out; launch.
+    # TODO: choose tile sizes and build a 2-D grid with enough programs to cover the
+    #       whole matrix in both dimensions (round each dimension up by your tile size
+    #       -- look for a Triton ceil-div helper). Pass strides for both x and out;
+    #       launch. (e10 revisits this grid once the tile sizes come from
+    #       @triton.autotune -- the grid becomes a callable that reads them from the
+    #       chosen config.)
     raise NotImplementedError("write the transpose kernel + launch")
     return out

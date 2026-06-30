@@ -250,6 +250,12 @@ def _(mo):
     $$\text{grid} = \Big(\big\lceil M / \text{BLOCK\_M}\big\rceil,\;
       \big\lceil N / \text{BLOCK\_N}\big\rceil\Big).$$
 
+    Under `@triton.autotune` (`2a`/`e10`) the tile sizes come from the chosen config
+    rather than constants you wrote, so this same block count is expressed as a
+    **callable** grid that reads the tuned sizes at launch — the autotune-ready
+    `lambda meta: …` form from `1a`, not a fixed tuple. The arithmetic is identical;
+    only where `BLOCK_M`/`BLOCK_N` come from changes.
+
     A single program owns one $\text{BLOCK\_M}\times\text{BLOCK\_N}$ patch of $C$. To
     fill it, it needs the matching rows of $A$ and columns of $B$ — but those are huge
     ($\text{BLOCK\_M}\times K$ and $K\times\text{BLOCK\_N}$). So it **walks the K
@@ -293,6 +299,10 @@ def _(mo):
     It deliberately leaves the **accumulator**, the **pointer arithmetic**, the entire
     **K-loop body** (the masked loads, `tl.dot`, and pointer advances), and the **final
     masked store** for you. Those are the crux of `e07`.
+
+    (`BLOCK_M`, `BLOCK_N`, `BLOCK_K` are **`tl.constexpr`** kernel arguments — compile-time
+    constants the compiler specializes the tile on, and exactly the knobs
+    `@triton.autotune` sweeps in `e10`.)
 
     > [Triton matmul tutorial](https://triton-lang.org/main/getting-started/tutorials/03-matrix-multiplication.html)
     > builds precisely this kernel (and adds the L2-cache-friendly "group-major"

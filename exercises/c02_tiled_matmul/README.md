@@ -50,6 +50,24 @@ real kernel you'll get `[PASS] correct` / `[FAIL] ...` and a `[PERF]` line.
    deadlocks. So put the ragged-`N` guard on the *final store*, not around the
    loads or the barriers. (This is exactly what the `N = 257` size is testing.)
 
+## Validate & benchmark it yourself
+Timing is the same device-event pattern as `c01` (warm up, bracket many `solve()` launches in
+a `cudaEventRecord` pair, then `cudaEventElapsedTime / iters`). What changes per kernel is the
+**reference**, the **tolerance**, and the **throughput formula**:
+
+- **Correctness:** compute a host reference with a triple-nested loop
+  (`C[i*N+j] += A[i*N+k] * B[k*N+j]`, accumulating in `float`), copy your `C` back, and compare
+  elementwise with `atol=1e-1, rtol=1e-2`. The slack is generous because a length-`N` inner
+  product reorders many adds — bit-equality would wrongly fail a correct kernel.
+- **Throughput:** matmul is **compute-bound**, so report TFLOP/s:
+  ```cpp
+  double tflops = 2.0 * N * N * N / (ms * 1e-3) / 1e12;   // 2·N³ flops for an N×N×N matmul
+  ```
+  Judge it against the fp32 peak and against cuBLAS. The harness checks a small `N` first for
+  correctness, then a tile-clean `N` for the timed run.
+
+The full method (median over samples, choosing tolerances, the L2 trap) is the reference card, `7b`.
+
 ## Going for performance
 - **Tile size is a resource budget.** Two `TILE × TILE` float tiles live in shared
   memory per block, against the ~48 KB/block and ~100 KB/SM limits. Bigger tiles

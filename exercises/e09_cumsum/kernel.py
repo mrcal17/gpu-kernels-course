@@ -14,12 +14,15 @@ import triton.language as tl
 
 @triton.jit
 def cumsum_kernel(
-    # TODO: x ptr, out ptr, strides, N, BLOCK_SIZE: tl.constexpr
+    # TODO: declare the kernel parameters. Think about what each program needs: the
+    #       input/output base pointers, enough stride info to walk to its row, the row
+    #       length, and a compile-time tile width.
 ):
     # TODO: one program per row; load the row (mask the tail to 0 so it doesn't
     #       pollute the running sum).
-    # TODO: inclusive scan along the block axis (Triton has a cumulative-sum op;
-    #       look for tl.cumsum / tl.associative_scan).
+    # TODO: inclusive scan along the block axis (Triton provides a cumulative-sum /
+    #       associative-scan primitive for in-block scans -- find it in the Triton
+    #       language module).
     # TODO: store the scanned row.
     pass
 

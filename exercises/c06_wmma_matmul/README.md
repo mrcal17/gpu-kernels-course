@@ -30,28 +30,45 @@ Run it:
 ## Hints — one at a time
 1. **A tensor-core op is warp-collective.** All 32 lanes of a warp issue it
    *together*, over fragments that are distributed across the warp's registers.
-   So map **warps** (not individual threads) to `16×16` output tiles. Inside the
-   kernel, `threadIdx.x / 32` tells you which warp you are within the block.
+   So map **warps** (not individual threads) to `16×16` output tiles. A warp is a
+   fixed number of lanes; from `threadIdx` work out which warp within the block
+   you are, then map that warp to a `(tileRow, tileCol)` in `C`.
 2. **A fragment is opaque.** You never index into it — you only `fill` it, `load`
    it, `mma` it, and `store` it. Every WMMA call ends in `_sync` precisely
    because all 32 lanes must reach it together with **converged** control flow
    (no lane peeling off in an `if`).
-3. **It's the c02 structure with the inner product swapped out.** Allocate an
-   fp32 `accumulator` fragment, zero it with `fill_fragment`, then loop `k` over
-   `K` in steps of 16: load an A-tile fragment and a B-tile fragment, do one
-   `mma_sync` into the accumulator, advance K. The accumulator stays fp32 the
-   whole way for precision.
-4. **Layouts and leading dimensions are the subtle part.** Look at the fragment
-   templates: `matrix_a` is `row_major`, `matrix_b` is `col_major`. The leading
-   dimension you pass to `load_matrix_sync` is the stride between consecutive
-   rows of the *full* buffer — for a row-major `N×N` matrix, that's `N`. Then
-   work out the base pointer of this warp's tile `(tileRow, tileCol)` at K-step
-   `k`. (B declared `col_major` while living in a row-major buffer: think about
-   which stride that choice actually implies.)
+3. **It's the c02 structure with the inner product swapped out.** Mirror that
+   shape: allocate an fp32 accumulator fragment, zero it, then walk `K` one tile
+   at a time — load an A-tile and a B-tile fragment and accumulate one tile-MMA
+   per step. Keep the accumulator in fp32 throughout for precision.
+4. **Layouts and leading dimensions are the subtle part.** Decide which layout
+   each operand fragment should declare, and what stride the load needs — relate
+   the leading dimension to how a row-major `N×N` buffer is laid out in memory,
+   and reason about what declaring one operand `col_major` over a row-major
+   buffer actually implies. Then work out the base pointer of this warp's tile
+   `(tileRow, tileCol)` at K-step `k`.
 5. **Get ONE tile correct first.** Before worrying about covering the whole
    matrix, make a single `16×16×16` tile match the reference. Remember the
    tolerance is loose — close-but-not-exact is the expected fp16 behavior, so
    don't chase the last few ulps.
+
+## Validate & benchmark it yourself
+Timing is the same device-event pattern as `c01` (warm up, bracket many `solve()` launches in
+a `cudaEventRecord` pair, then `cudaEventElapsedTime / iters`). What changes per kernel is the
+**reference**, the **tolerance**, and the **throughput formula**:
+
+- **Correctness:** a triple-loop host reference over the original fp32 values, but compare with
+  a **very loose** `atol=1.0, rtol=2e-2` — the tensor cores consume fp16 inputs, so
+  half-precision rounding plus accumulation order makes large absolute differences expected.
+  (Too tight here and a *correct* WMMA kernel fails.)
+- **Throughput:** compute-bound, so report TFLOP/s:
+  ```cpp
+  double tflops = 2.0 * N * N * N / (ms * 1e-3) / 1e12;   // 2·N³ flops
+  ```
+  This is where you compare against the **tensor-core** peak (much higher than the fp32 number),
+  not the CUDA-core roof.
+
+The full method (median over samples, choosing tolerances, the L2 trap) is the reference card, `7b`.
 
 ## Going for performance
 - This is your first taste of the tensor cores from CUDA C directly (in Triton,

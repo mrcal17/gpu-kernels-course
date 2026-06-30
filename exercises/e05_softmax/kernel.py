@@ -12,7 +12,8 @@ import triton.language as tl
 
 @triton.jit
 def softmax_kernel(
-    # TODO: x ptr, out ptr, strides, N, BLOCK_SIZE: tl.constexpr
+    # TODO: declare the kernel parameters you need -- the data pointers, whatever stride
+    #       info you need to walk rows, the row length, and a compile-time tile width.
 ):
     # TODO: one program per row.
     # TODO: load the row (assume N <= BLOCK_SIZE for your first version; mask the tail).

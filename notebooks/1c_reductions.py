@@ -280,11 +280,11 @@ def _(mo):
 
     ```python
     @triton.jit
-    def row_sum_kernel(x_ptr, out_ptr, n_cols, BLOCK_SIZE: tl.constexpr):
+    def row_sum_kernel(x_ptr, out_ptr, n_cols, stride_row, BLOCK_SIZE: tl.constexpr):
         row = tl.program_id(0)                       # one program per row
         offs = tl.arange(0, BLOCK_SIZE)              # lanes along the row
         mask = offs < n_cols                         # guard the ragged row tail
-        x = tl.load(x_ptr + row * n_cols + offs,     # load this row's tile
+        x = tl.load(x_ptr + row * stride_row + offs, # row start via its stride, never n_cols
                     mask=mask, other=0.0)            # other=0.0 is the SUM identity
         # row_total = tl.sum(x, axis=0)              # <- the reduction (you write it)
         # tl.store(out_ptr + row, row_total)
@@ -298,6 +298,11 @@ def _(mo):
 
     If a row is wider than one tile (`n_cols > BLOCK_SIZE`), you loop: accumulate a running
     partial across several tiles, then reduce. That's the two-level structure of §4.
+
+    (The row address uses a passed-in **`stride_row`**, not `n_cols`: idiomatic Triton
+    never assumes a contiguous layout, so the kernel still works on a transposed or
+    sliced view where the row's stride ≠ its width. For a plain contiguous tensor they
+    happen to be equal.)
 
     > [Triton reduction ops](https://triton-lang.org/main/python-api/triton.language.html#reduction-ops)
     > (`tl.sum`, `tl.max`, `tl.min`, …); the

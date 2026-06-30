@@ -40,6 +40,30 @@ Unlocked by: `e07_matmul`, `2a` (occupancy / shared memory).
    change, should trigger a re-tune. For a matmul whose optimum depends on the
    shape, list the dimensions that define the problem size.
 
+## Validate & benchmark it yourself
+The runner's `[PASS]` / `[PERF]` / `[REF]` lines are just the `1a` correctness-and-speed
+loop. Here it is for this kernel, to run yourself in a scratch script:
+
+```python
+import torch, triton
+torch.backends.cuda.matmul.allow_tf32 = False   # fair fp32 reference
+
+ref = a @ b                                 # reference FIRST (torch)
+out = matmul(a, b)                          # your kernel
+torch.testing.assert_close(out, ref, atol=1e-1, rtol=1e-2)   # long inner product -> loose
+
+M, K = a.shape; N = b.shape[1]
+ms     = triton.testing.do_bench(lambda: matmul(a, b), warmup=25, rep=100, return_mode="median")
+tflops = 2 * M * N * K / (ms * 1e-3) / 1e12
+ref_ms = triton.testing.do_bench(lambda: a @ b, warmup=25, rep=100, return_mode="median")
+print(f"{tflops:.1f} TFLOP/s   ({ref_ms/ms:.2f}x torch)")
+```
+
+Same compute-bound matmul math as `e07`, but the shapes are deliberately **ragged**
+(1023×1025×769) so your masking is exercised, and `@triton.autotune` means `do_bench` reports
+your *best* config's time. Compare TFLOP/s to the tensor-core peak; TF32 off for a fair torch
+bar. Full tolerance table and traps: `7b`.
+
 ## Going for performance
 - **Precision note (same as `e07`):** on fp32 inputs `tl.dot` uses TF32 tensor
   cores by default, which rounds the mantissa. The loose tolerances here

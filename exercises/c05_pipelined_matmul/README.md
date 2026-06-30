@@ -50,6 +50,22 @@ python -m harness.runner c05 --watch
    (that's the heavier libcu++ `cuda::pipeline` C++ API, a different interface). The
    runner already builds with `-std=c++17`, which the pipeline headers require.
 
+## Validate & benchmark it yourself
+Timing is the same device-event pattern as `c01` (warm up, bracket many `solve()` launches in
+a `cudaEventRecord` pair, then `cudaEventElapsedTime / iters`). What changes per kernel is the
+**reference**, the **tolerance**, and the **throughput formula**:
+
+- **Correctness:** same as `c02` — a triple-loop host reference
+  (`C[i*N+j] += A[i*N+k] * B[k*N+j]`), compare with `atol=1e-1, rtol=1e-2` (matmul reorders adds).
+- **Throughput:** compute-bound, so report TFLOP/s:
+  ```cpp
+  double tflops = 2.0 * N * N * N / (ms * 1e-3) / 1e12;   // 2·N³ flops
+  ```
+  The pipelining (cp.async double-buffering) should push you toward the same roof `c02` aimed
+  at by hiding global-load latency behind compute — so compare your number to `c02`'s and to cuBLAS.
+
+The full method (median over samples, choosing tolerances, the L2 trap) is the reference card, `7b`.
+
 ## Going for performance
 - **More stages hide more latency only up to a knee** — once compute fully covers the
   load, extra buffers just spend shared memory and cost you occupancy. This is exactly

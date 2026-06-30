@@ -14,46 +14,59 @@
 // exits without checking anything. Return 0 once you actually launch.
 
 #include <cuda_fp16.h>
-// TODO: #include <mma.h> as well, and bring the WMMA names into scope with
-//       `using namespace nvcuda::wmma;` (the fragment/load/store/mma symbols
-//       all live in nvcuda::wmma).
+// TODO: the WMMA fragment/load/store/mma types live in a dedicated CUDA header
+//       and a sub-namespace -- find which header to include alongside this one,
+//       and how to bring those symbols into scope.
 
 __global__ void wmma_matmul(const __half* A, const __half* B, float* C, int N) {
     // TODO: map each WARP (not each thread) to one 16x16 output tile of C.
-    //       A block has several warps; derive this warp's (tileRow, tileCol)
-    //       in the C grid from blockIdx and threadIdx (threadIdx.x / 32 picks
-    //       the warp within the block). Each of the 32 lanes runs this same
-    //       code with converged control flow.
+    //       A block has several warps. A warp is a fixed number of lanes; from
+    //       threadIdx work out which warp within the block you belong to, then
+    //       derive this warp's (tileRow, tileCol) in the C grid from blockIdx and
+    //       that warp index. Each of the 32 lanes runs this same code with
+    //       converged control flow.
 
-    // TODO: declare the three fragments for a 16x16x16 tile:
-    //         fragment<matrix_a, 16,16,16, half, row_major>  a_frag;
-    //         fragment<matrix_b, 16,16,16, half, col_major>  b_frag;
-    //         fragment<accumulator, 16,16,16, float>         acc_frag;
-    //       The accumulator stays fp32 for precision — that is the whole
-    //       fp16-inputs / fp32-accumulate trade.
+    // TODO: declare three fragments for one tile -- two input operand fragments
+    //       (A and B) and one accumulator. Work out from the WMMA docs each
+    //       fragment's template arguments: its operand role, the tile's three
+    //       dimensions, the element precision (inputs vs accumulator), and the
+    //       memory layout each operand expects. The accumulator stays fp32 for
+    //       precision — that is the whole fp16-inputs / fp32-accumulate trade.
 
-    // TODO: fill_fragment(acc_frag, 0.0f) to zero the accumulator.
+    // TODO: before the K-loop, zero the accumulator fragment (there is a WMMA
+    //       helper that fills a fragment with a constant).
 
-    // TODO: loop k from 0 to N in steps of 16. Each iteration:
-    //         - derive the base pointer of this warp's A-tile (rows tileRow*16,
-    //           cols k) and B-tile (rows k, cols tileCol*16) inside the big
+    // TODO: walk the K dimension one tile at a time, accumulating each tile-MMA
+    //       into the accumulator (derive the step from the tile's K extent).
+    //       Each iteration:
+    //         - derive the base pointer of this warp's A-tile (the rows this
+    //           warp's tileRow owns, at column offset k) and its B-tile (rows at
+    //           offset k, the columns this warp's tileCol owns) inside the big
     //           row-major buffers, and the leading dimension to pass;
-    //         - load_matrix_sync(a_frag, A_tile_ptr, lda);
-    //         - load_matrix_sync(b_frag, B_tile_ptr, ldb);
-    //         - mma_sync(acc_frag, a_frag, b_frag, acc_frag);
+    //         - load this warp's A-tile and B-tile into their fragments (there is
+    //           a load-fragment-from-memory call that takes a pointer and a
+    //           leading dimension);
+    //         - issue one warp-collective tile-MMA that multiplies the two
+    //           operand fragments and accumulates into the accumulator. Work out
+    //           the argument order, including how the running accumulator is
+    //           threaded through the call.
     //       Every WMMA call ends in _sync because all 32 lanes must reach it
     //       together. A fragment is opaque — never index into it.
 
-    // TODO: store_matrix_sync the accumulator to C's tile (leading dim N,
-    //       layout mem_row_major).
+    // TODO: after the K-loop, write the accumulator out to this warp's tile of C
+    //       (there is a store-fragment call; you supply the destination pointer,
+    //       the buffer's leading dimension, and the memory layout C is stored in).
 }
 
 extern "C" int solve(const __half* d_A, const __half* d_B, float* d_C, int N) {
-    // TODO: choose a launch config that gives ONE WARP per 16x16 output tile.
-    //       There are (N/16) x (N/16) output tiles. A block holds several warps
-    //       (blockDim.x must be a multiple of 32); size grid/block so every tile
-    //       is covered exactly once.
-    // TODO: launch wmma_matmul<<<grid, block>>>(d_A, d_B, d_C, N);
+    // TODO: pick a launch geometry so that exactly one warp lands on each output
+    //       tile and every tile is covered once. Work out how many tiles there
+    //       are from N and the tile size, and remember a block's thread count
+    //       must be a whole number of warps. (Here the grid is a fixed config of
+    //       constants; in e10 the grid becomes a callable that reads the chosen
+    //       tile sizes from the autotune config instead.)
+    // TODO: launch your kernel with the grid/block you chose, forwarding the
+    //       device pointers and N.
     // TODO: return 0 after launching (replace the `return 77;` sentinel).
     return 77;
 }

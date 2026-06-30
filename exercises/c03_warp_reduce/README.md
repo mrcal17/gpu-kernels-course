@@ -44,6 +44,23 @@ Run it (re-runs on every save):
 6. A grid-stride loop lets a fixed grid sum any `n`. Size the grid for occupancy, not to
    cover `n` one-element-per-thread.
 
+## Validate & benchmark it yourself
+Timing is the same device-event pattern as `c01` (warm up, bracket many `solve()` launches in
+a `cudaEventRecord` pair, then `cudaEventElapsedTime / iters`). What changes per kernel is the
+**reference**, the **tolerance**, and the **throughput formula**:
+
+- **Correctness:** compute the host reference sum by accumulating every input in **double** (so
+  the reference itself isn't the thing that's wrong), copy your scalar back, and compare with
+  `atol=1e-2, rtol=1e-3`. A tree / warp reduction sums in a different order than a serial loop,
+  so allow slack.
+- **Throughput:** a reduction is **memory-bound** (you read `n` floats and write one), so report GB/s:
+  ```cpp
+  double gbps = (double)n * sizeof(float) / (ms * 1e-3) / 1e9;   // input-dominated
+  ```
+  Judge it against the ~896 GB/s roof.
+
+The full method (median over samples, choosing tolerances, the L2 trap) is the reference card, `7b`.
+
 ## Going for performance
 This is **memory-bound**: you touch every element once, so the ceiling is your `e03`
 bandwidth. To hit it the per-thread input reads must be **coalesced** — adjacent lanes

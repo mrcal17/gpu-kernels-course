@@ -469,6 +469,62 @@ def _(mo):
     mo.md(r"""
     ---
 
+    ## 9. Two more questions: is it *correct*, and is it *fast*?
+
+    Writing the kernel is half the job. The other half — the half you'll repeat on **every
+    exercise in this course** — is proving it's right and measuring how fast it is, against a
+    reference you trust. The official [Triton vector-add
+    tutorial](https://triton-lang.org/main/getting-started/tutorials/01-vector-add.html)
+    folds exactly this into its first kernel, and so do we. Two questions, two tools.
+
+    **Is it correct?** Compute the answer a trusted way (torch), then compare. Do **not** use
+    `==`: your kernel sums in a different order than torch, so results can differ in the last
+    bits and *still be correct*. Compare with a tolerance — and compute the reference
+    **first**, so a buggy in-place kernel can't overwrite your golden answer:
+
+    ```python
+    ref = a + b                 # trusted answer, captured BEFORE your kernel runs
+    out = vector_add(a, b)      # your kernel
+    torch.testing.assert_close(out, ref, atol=0.0, rtol=0.0)   # add is EXACT -> demand 0/0
+    ```
+
+    `assert_close` raises with a diagnostic (max abs/rel error, how many elements mismatched)
+    when it fails — far more useful than `torch.allclose`'s bare `True/False`. The tolerance
+    is **op-specific**: a plain add is exact (`0/0`), but a long reduction or a matmul must
+    loosen, because more summation means more reordering. (The full tolerance table and the
+    *why* live in the reference card, `7b`.)
+
+    **Is it fast?** Time it honestly — warm up, run many times, take the **median** — then
+    turn milliseconds into a **rate** you can hold against the roof. `triton.testing.do_bench`
+    does the warmup and median for you; the GB/s formula is just *bytes moved ÷ time*:
+
+    ```python
+    import triton
+    ms   = triton.testing.do_bench(lambda: vector_add(a, b), warmup=25, rep=100, return_mode="median")
+    gbps = 3 * a.numel() * a.element_size() / (ms * 1e-3) / 1e9       # read a, read b, write out
+    ref_ms = triton.testing.do_bench(lambda: a + b, warmup=25, rep=100, return_mode="median")  # the torch bar
+    ```
+
+    Then **judge** the number: a contiguous add should land near **896 GB/s** (your card's
+    DRAM roof from `0d`) — 90%+ means you're saturating memory and there's nothing left to
+    win; 30% at full occupancy is the fingerprint of uncoalesced loads (`1b`). And
+    `ref_ms / ms` tells you whether you beat torch's own kernel.
+
+    This is the loop for **every** kernel you'll write: **write -> `assert_close` ->
+    `do_bench` + roofline -> (profile) -> repeat.** The terminal harness runs exactly this
+    for you — the `[PASS]`, `[PERF] ... GB/s`, and `[REF] torch ... (N.NNx your time)` lines
+    you're about to see *are* `assert_close` + `do_bench` + this GB/s math. Every exercise's
+    README has a *"Validate & benchmark it yourself"* section so you can run the loop by hand;
+    `7b` is the full reference card.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ---
+
     ## Why this matters for the kernels you'll write
 
     - **Think in tiles, not lanes.** Every Part-1 kernel is "load a tile, compute on it,

@@ -25,9 +25,10 @@ Unlocked by: `e07_matmul` / `e10_autotuned_matmul` (the tiling) + lecture 2c (qu
    K loop, and the masks are identical — only the B load changes.
 2. The quant layout is **symmetric** and **per-output-channel**: there is no zero-point
    (`z = 0`), and there is exactly one fp32 scale per column of `B` (per output channel).
-   Dequantizing a weight is one multiply: `b_hat = b_q * scale_of_its_column`. Convince
-   yourself from the spec **which axis** the scale broadcasts over — look at which
-   dimension `amax` reduced.
+   Because it's symmetric, dequant is a single scale multiply — recover each weight by
+   scaling the stored int8 value by its channel's scale. Derive from the spec what that
+   one multiply looks like and which factor it uses, and convince yourself **which axis**
+   the scale broadcasts over — look at which dimension `amax` reduced.
 3. The scale vector is indexed by the **output (column)** dimension only — it is constant
    across the contraction dimension. So load it **once per output tile, outside the K
    loop**, not every K-chunk. Think about where that load belongs.
@@ -41,6 +42,28 @@ Unlocked by: `e07_matmul` / `e10_autotuned_matmul` (the tiling) + lecture 2c (qu
    dequant must match the reference's dequant exactly — same scale, same broadcasting —
    and then only float rounding separates you. A kernel that forgets the scale misses by
    thousands.
+
+## Validate & benchmark it yourself
+The runner's `[PASS]` / `[PERF]` / `[REF]` lines are just the `1a` correctness-and-speed
+loop. Here it is for this kernel, to run yourself in a scratch script:
+
+```python
+import torch, triton
+
+ref = (a.float() @ (b_q.float() * scale)).to(torch.float16)   # dequant then matmul, FIRST
+out = quant_matmul(a, b_q, scale)                             # your kernel
+torch.testing.assert_close(out, ref, atol=1e-1, rtol=1e-2)   # fp16 round-off + accumulation order
+
+M, K = a.shape; N = b_q.shape[1]
+ms     = triton.testing.do_bench(lambda: quant_matmul(a, b_q, scale), warmup=25, rep=100, return_mode="median")
+tflops = 2 * M * N * K / (ms * 1e-3) / 1e12   # dequant is lower-order; the matmul dominates
+ref_ms = triton.testing.do_bench(lambda: (a.float() @ (b_q.float() * scale)).to(torch.float16), warmup=25, rep=100, return_mode="median")
+print(f"{tflops:.1f} TFLOP/s   ({ref_ms/ms:.2f}x torch)")
+```
+
+Compute-bound. The reference dequantizes the int8 weights exactly as your kernel should, so
+what's left in the tolerance is fp16 rounding + accumulation order — hence the loose
+`1e-1/1e-2`. Compare TFLOP/s to the tensor-core peak. Full tolerance table and traps: `7b`.
 
 ## Going for performance
 - Everything from `e07`/`e10` applies: `tl.dot` hits tensor cores, tile sizes are

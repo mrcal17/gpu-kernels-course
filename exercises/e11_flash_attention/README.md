@@ -45,6 +45,29 @@ Unlocked by: `2b_flash_attention` (online softmax) and `1e_tiling_matmul` (tilin
    probabilities-times-values. Think carefully about which operand needs transposing
    for each of the two dots.
 
+## Validate & benchmark it yourself
+The runner's `[PASS]` / `[PERF]` / `[REF]` lines are just the `1a` correctness-and-speed
+loop. Here it is for this kernel, to run yourself in a scratch script:
+
+```python
+import torch, triton
+import torch.nn.functional as F
+
+ref = F.scaled_dot_product_attention(q, k, v, is_causal=False)   # reference FIRST (torch)
+out = flash_attention(q, k, v)                                   # your kernel
+torch.testing.assert_close(out, ref, atol=1e-2, rtol=1e-2)   # fp16 data + fp32 softmax -> looser
+
+B, H, N, D = q.shape
+ms     = triton.testing.do_bench(lambda: flash_attention(q, k, v), warmup=25, rep=100, return_mode="median")
+tflops = 4 * B * H * N * N * D / (ms * 1e-3) / 1e12   # the two matmuls (QK^T and PV) dominate; softmax is lower-order
+ref_ms = triton.testing.do_bench(lambda: F.scaled_dot_product_attention(q, k, v, is_causal=False), warmup=25, rep=100, return_mode="median")
+print(f"{tflops:.1f} TFLOP/s   ({ref_ms/ms:.2f}x torch)")
+```
+
+Compute-bound, and the inputs are fp16 — so the tolerance is loose (fp16 data, fp32 softmax
+accumulation). torch's SDPA is itself a fused flash kernel, so it's a stiff bar. The FLOP
+count includes only the two matmuls. Full tolerance table and traps: `7b`.
+
 ## Going for performance
 - `tl.dot` maps to tensor cores — both matmuls go through it.
 - The win over a naive attention is **memory**: you never read or write the `N × N`

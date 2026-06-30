@@ -87,6 +87,7 @@
 | Module | Topics |
 |---|---|
 | `7a_study_guide` | cheat-sheets (Triton API, CUDA launch, occupancy math); profiling (Nsight Compute / `do_bench`); the 5070 Ti roofline numbers; glossary; debugging checklist; reference links |
+| `7b_validation_and_benchmarking` | validating custom ops vs a torch reference (`torch.testing.assert_close`, choosing tolerances, ref-before-kernel, TF32-fair, ragged sizes); benchmarking (`do_bench` vs hand-rolled CUDA events, warmup/median, the L2-flush trap); throughput math (GB/s, TFLOP/s) & judging vs the roofline and torch; the `spec.py` contract decoded |
 
 ---
 

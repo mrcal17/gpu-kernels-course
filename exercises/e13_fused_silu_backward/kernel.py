@@ -42,8 +42,9 @@ def silu_bwd_kernel(
 
 def _silu_forward(x: torch.Tensor) -> torch.Tensor:
     out = torch.empty_like(x)
-    # TODO: n_elements; pick BLOCK_SIZE; grid = (cdiv(n_elements, BLOCK_SIZE),);
-    #       launch silu_fwd_kernel.
+    # TODO: how many elements are there, and how many programs do you need to cover
+    #       them all with your chosen chunk size? Build the launch grid from that,
+    #       then launch silu_fwd_kernel.
     raise NotImplementedError("write the fused SiLU forward launch")
     return out
 

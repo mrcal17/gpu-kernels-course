@@ -123,6 +123,7 @@ def _(mo):
     | [4A: Blackwell (sm_120)](4a_blackwell/) | 5th-gen tensor cores, FP4/FP8, TMA — what's new on your card |
     | [4B: Capstone](4b_capstone/) | fused attention *or* quantized GEMM from scratch, benchmarked vs torch |
     | [7A: Study Guide & Reference](7a_study_guide/) | cheat-sheets, profiling, glossary, the roofline numbers, links |
+    | [7B: Validating & Benchmarking](7b_validation_and_benchmarking/) | proving correctness with `assert_close`; timing with `do_bench`; GB/s & TFLOP/s vs the roofline; the `spec.py` contract |
     """)
     return
 

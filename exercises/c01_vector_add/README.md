@@ -36,9 +36,9 @@ then the big one) + print GB/s.
 ## Hints — peek only when stuck (one at a time)
 1. The body you write is the code of **one** thread, not a loop over `n` — the
    launch *is* the loop (lecture `3a`).
-2. Turn `(block, lane)` into a flat position: combine `blockIdx.x`,
-   `blockDim.x`, and `threadIdx.x` into a single global index. Re-derive the
-   idiom; don't look it up.
+2. Turn `(block, lane)` into a flat position: combine your block's index, the
+   number of threads per block, and your index within the block into a single
+   global index. Re-derive the idiom; don't look it up.
 3. The last block runs past the end when `blockDim` doesn't divide `n`. One
    plain `if` is your mask — decide what condition keeps a thread in bounds.
    (The harness checks a ragged `n=1000` first, precisely to catch a missing
@@ -48,6 +48,47 @@ then the big one) + print GB/s.
    — you only configure and launch.
 5. Remember to `return 0` from `solve()` once you actually launch; while it
    still returns the sentinel the harness will only ever print `[TODO]`.
+
+## Validate & benchmark it yourself
+The harness does correctness + timing for you (`harness.cu`), but the methodology is the real
+lesson — and in CUDA you write it by hand, with **events** on the device and a host-side
+comparison. This is what `harness.cu` is doing under those `[PASS]`/`[PERF]` lines, and the
+shape you'd write yourself:
+
+```cpp
+// 1. CORRECTNESS — compute a host reference, copy your result back, compare with a tolerance.
+//    fp32 add is exact, so atol is tight; reductions/matmul need more slack.
+for (int i = 0; i < n; ++i) {
+    float ref = h_a[i] + h_b[i];
+    if (std::fabs(h_out[i] - ref) > 1e-5f) { /* fail */ }
+}
+
+// 2. TIMING — CUDA events time on the DEVICE. Warm up, then bracket many launches.
+const int warmup = 10, iters = 50;
+for (int i = 0; i < warmup; ++i) solve(d_a, d_b, d_out, n);   // burn the cold-start cost
+cudaDeviceSynchronize();
+
+cudaEvent_t start, stop;
+cudaEventCreate(&start); cudaEventCreate(&stop);
+cudaEventRecord(start);
+for (int i = 0; i < iters; ++i) solve(d_a, d_b, d_out, n);
+cudaEventRecord(stop);
+cudaEventSynchronize(stop);                                   // wait for the device
+
+float total_ms = 0.0f;
+cudaEventElapsedTime(&total_ms, start, stop);
+double ms = total_ms / iters;
+
+// 3. THROUGHPUT — bytes moved ÷ time. Vector add moves 3·n·4 bytes (read a, read b, write out).
+double gbps = 3.0 * n * sizeof(float) / (ms * 1e-3) / 1e9;
+```
+
+Two things the events buy you that a host timer can't: they measure **device** time (no
+async-launch lie — a CPU `clock()` around the launch would time the *launch*, not the kernel),
+and warmup hides the one-time cost of the first launch. Then judge `gbps` against the ~896
+roof. The Triton track does all of this with one line — `triton.testing.do_bench` — and the
+full method (median over samples, the L2-flush trap, choosing tolerances) is the reference
+card, `7b`.
 
 ## Going for performance
 This kernel is pure memory traffic, so the ceiling is bandwidth, not math.

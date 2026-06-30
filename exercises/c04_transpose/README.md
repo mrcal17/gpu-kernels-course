@@ -31,9 +31,9 @@ Run it:
 2. Reading the staged tile back **transposed** means a **column** access of shared
    memory. On an unpadded `TILE × TILE` tile whose width is a multiple of 32, a
    whole column collapses onto a single bank — the worst-case 32-way conflict.
-3. The fix is **one character** of the declaration: pad the inner dimension by 1
-   (`TILE × (TILE+1)`) so column neighbors land in consecutive banks. Work out on
-   paper *why* a width of `TILE+1` shears the bank mapping.
+3. The fix is a single change to the tile's declaration — adjust one of its
+   dimensions so that elements in the same column no longer map to the same bank.
+   Work out on paper *what* change to the width achieves that and *why*.
 4. **Two index maps, not one.** The `(row, col)` you READ from `d_in` is not the
    `(row, col)` you WRITE to `d_out`. Derive each separately so that within a warp
    each global access walks **contiguous** addresses (that's what keeps both
@@ -41,6 +41,23 @@ Run it:
 5. Guard **both** the load and the store for the `1000 × 1500` case (sizes that
    aren't multiples of `TILE`). And make sure no `__syncthreads()` sits behind a
    branch that only some threads in the block take — that hangs the block.
+
+## Validate & benchmark it yourself
+Timing is the same device-event pattern as `c01` (warm up, bracket many `solve()` launches in
+a `cudaEventRecord` pair, then `cudaEventElapsedTime / iters`). What changes per kernel is the
+**reference**, the **tolerance**, and the **throughput formula**:
+
+- **Correctness:** the harness fills the input with an index encoding so the transpose is
+  **exact** — build the host reference as `out[c*rows + r] = in[r*cols + c]` and compare with
+  `atol=0` (any mismatch is a real indexing bug, not rounding).
+- **Throughput:** transpose is **memory-bound**, so report GB/s:
+  ```cpp
+  double gbps = 2.0 * rows * cols * sizeof(float) / (ms * 1e-3) / 1e9;   // read + write
+  ```
+  Judge it against the ~896 roof — but the real story is coalescing / bank conflicts (`3d`): a
+  naive transpose strides either the read or the write.
+
+The full method (median over samples, choosing tolerances, the L2 trap) is the reference card, `7b`.
 
 ## Going for performance
 - With the padding in, you should land a large fraction of your `c03` copy

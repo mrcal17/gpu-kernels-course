@@ -13,9 +13,13 @@ import triton.language as tl
 
 @triton.jit
 def copy_kernel(
-    # TODO: in ptr, out ptr, n_elements, BLOCK_SIZE: tl.constexpr
+    # TODO: declare the kernel's parameters -- the data it reads/writes, how many
+    #       elements there are, and the per-program tile size (think about which of
+    #       these must be known at compile time).
 ):
-    # TODO: program id -> offsets -> mask -> load -> store
+    # TODO: each program handles one contiguous tile of the array. Work out which
+    #       elements this program owns, guard against running past the end, then
+    #       move the data from input to output.
     pass
 
 

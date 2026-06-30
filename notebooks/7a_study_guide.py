@@ -657,7 +657,7 @@ def _(mo):
     mo.md(r"""
     ---
 
-    [&#8593; Course home](../) &nbsp;|&nbsp; &#8592; Prev: [4B: Capstone](../4b_capstone/)
+    [&#8593; Course home](../) &nbsp;|&nbsp; &#8592; Prev: [4B: Capstone](../4b_capstone/) &nbsp;|&nbsp; Next: [7B: Validating & Benchmarking](../7b_validation_and_benchmarking/) &#8594;
     """)
     return
 

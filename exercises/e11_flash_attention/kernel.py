@@ -24,20 +24,21 @@ def flash_kernel(
 ):
     # TODO: map the program id(s) -> (which batch*head, which query block) this
     #       program owns. Load that Q block once into SRAM.
-    # TODO: init the running triple per query row -- running max at -inf, running
-    #       denominator at 0, output accumulator at 0 (all fp32, sized to the
-    #       query block / head dim).
-    # TODO: loop over the N keys in steps of BLOCK_N:
-    #          load the K block and V block
-    #          score tile  s_ij = tl.dot(q_i, k_j^T) * scale   (lives only in SRAM)
-    #          online-softmax update:
-    #             new_max = max(old_max, rowmax(s_ij))
-    #             p       = exp(s_ij - new_max)
-    #             alpha   = exp(old_max - new_max)            (rescale the old state)
-    #             denom   = alpha * denom + rowsum(p)
-    #             acc     = alpha * acc + tl.dot(p, v_j)
-    #             old_max = new_max
-    #          keep the score/probability math in fp32.
+    # TODO: init the three running statistics per query row so the first KV block's
+    #       contribution is taken as-is -- think about what starting value for the
+    #       running max makes the first real max win, and what neutral values the
+    #       two sums (denominator, output accumulator) need. Keep them in fp32, sized
+    #       to what a "per query row" / "per head dim" quantity needs.
+    # TODO: loop over the N keys in steps of BLOCK_N. For each KV block:
+    #          load the K block and V block, then score your query block against the
+    #          key block (remember the scale). That score step and the later
+    #          output-accumulation step are each a matmul that maps to tensor cores --
+    #          figure out which operand of each must be transposed so the dimensions
+    #          line up (see hint 6). The score tile lives only in SRAM.
+    #          Then apply the online-softmax update you derived in 2b: refresh the
+    #          running max, exponentiate the scores against it, compute the rescale
+    #          factor for the OLD state, and fold both the denominator and the output
+    #          accumulator forward. Keep the score/probability math in fp32.
     # TODO: after the KV loop, normalize ONCE: acc = acc / denom; cast to fp16 and
     #       store the O block.
     pass

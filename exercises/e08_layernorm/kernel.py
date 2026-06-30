@@ -18,9 +18,12 @@ def layernorm_kernel(
 ):
     # TODO: one program per row; load the row (mask the tail; assume N <= BLOCK_SIZE
     #       for the first version).
-    # TODO: mean = sum(row)/N ; var = sum((row-mean)^2)/N
-    # TODO: norm = (row - mean) * rsqrt(var + eps)
-    # TODO: out = norm * w + b   (w, b indexed by column)
+    # TODO: reduce the row to its mean, then to its variance (deviation-squared,
+    #       averaged). Decide what to divide by.
+    # TODO: center the row and rescale it to unit variance (remember eps for numerical
+    #       safety -- think about where it belongs).
+    # TODO: apply the affine transform; figure out which axis weight/bias are indexed
+    #       along and which offsets that reuses.
     pass
 
 

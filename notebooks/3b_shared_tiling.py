@@ -48,7 +48,9 @@ def _(mo):
     is the scalar version of the `0b` model:
 
     ```cpp
-    __global__ void matmul_naive(const float* A, const float* B, float* C, int N) {
+    __global__ void matmul_naive(const float* __restrict__ A, const float* __restrict__ B,
+                                 float* __restrict__ C, int N) {
+        // __restrict__ = inputs don't alias C; lets nvcc cache reads (more in 3d).
         int row = blockIdx.y * blockDim.y + threadIdx.y;
         int col = blockIdx.x * blockDim.x + threadIdx.x;
         if (row < N && col < N) {
@@ -360,7 +362,8 @@ def _(mo):
     ```cpp
     #define TILE 16
 
-    __global__ void matmul_tiled(const float* A, const float* B, float* C, int N) {
+    __global__ void matmul_tiled(const float* __restrict__ A, const float* __restrict__ B,
+                                 float* __restrict__ C, int N) {
         __shared__ float As[TILE][TILE];
         __shared__ float Bs[TILE][TILE];
 

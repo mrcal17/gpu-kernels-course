@@ -17,13 +17,13 @@ def vector_add_kernel(
     # TODO: declare the arguments this kernel needs.
     #   - the input/output pointers
     #   - the number of elements (so you can build a mask)
-    #   - a BLOCK_SIZE compile-time constant: tl.constexpr
+    #   - a per-program tile size (which of these must be known at compile time?)
 ):
     # TODO: write the kernel body. See README.md hints 1-4.
-    #   1. which block am I?         -> tl.program_id
-    #   2. which indices do I own?   -> that block id, BLOCK_SIZE, tl.arange
-    #   3. don't run off the end     -> a boolean mask
-    #   4. load, add, store          -> tl.load / tl.store (pass the mask!)
+    #   1. which contiguous chunk does this program own? (its program index)
+    #   2. from that and the tile size, build the vector of element offsets it owns
+    #   3. the last program runs past the end -- build a boolean mask of the valid lanes
+    #   4. read the two input chunks (masked), add them, write the result back (masked)
     pass
 
 
@@ -33,10 +33,12 @@ def vector_add(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     out = torch.empty_like(a)
     n_elements = out.numel()
 
-    # TODO: choose a BLOCK_SIZE (a power of two is conventional -- why?).
+    # TODO: choose a tile size (a power of two is conventional -- why?).
     # TODO: compute the 1-D launch grid: how many program instances do you need
-    #       so that every element is covered? (Look for a Triton ceil-div helper.)
-    # TODO: launch -> vector_add_kernel[grid](... , BLOCK_SIZE=...)
+    #       so that every element is covered? (a ceiling division -- look for a
+    #       Triton ceil-div helper.)
+    # TODO: launch the kernel over that grid, passing the pointers, the element
+    #       count, and the tile size.
     raise NotImplementedError("write the kernel + launch in kernel.py")
 
     return out

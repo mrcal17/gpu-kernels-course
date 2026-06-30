@@ -30,8 +30,10 @@
 // ---------------------------------------------------------------------------
 // The pipelined tiled matmul kernel.
 //
-// TODO: declare DOUBLE-buffered shared tiles:
-//          __shared__ float As[2][TILE][TILE], Bs[2][TILE][TILE];
+// TODO: declare your shared tiles, but give each an extra dimension so you hold
+//       two copies of each (one being read by compute while the other is being
+//       filled by an async copy). Derive that extra dimension and the tile shape
+//       from your c02 tile.
 // TODO: write a device helper that ISSUES the async copies of one A-tile and
 //       one B-tile (global -> shared) for a given k-step, using
 //       __pipeline_memcpy_async for each element this thread owns, then
@@ -44,12 +46,14 @@
 //       reason out the depth N for a double buffer (see README hint 5) --
 //       __syncthreads(), and do the TILE-long multiply-accumulate on the
 //       CURRENT buffer into a per-thread register accumulator.
-// TODO: ping-pong the buffer index each iteration (buf ^= 1); __syncthreads()
-//       before overwriting a buffer you may still be reading.
+// TODO: each iteration, flip which of the two buffers is current vs. next --
+//       decide how you track and toggle that index; __syncthreads() before
+//       overwriting a buffer you may still be reading.
 // TODO: after the loop, write the accumulator to C with the ragged-N guard.
 // ---------------------------------------------------------------------------
-__global__ void pipelined_matmul_kernel(const float* A, const float* B,
-                                        float* C, int N) {
+__global__ void pipelined_matmul_kernel(const float* __restrict__ A,
+                                        const float* __restrict__ B,
+                                        float* __restrict__ C, int N) {
     // TODO: implement the double-buffered, cp.async pipelined matmul above.
     (void)A;
     (void)B;

@@ -52,13 +52,40 @@ Unlocked by: `2d` (custom autograd Functions).
    to a **clone**, and **detach** the forward output you return so it carries no
    stray graph. Otherwise you corrupt the run or the grader complains.
 
+## Validate & benchmark it yourself
+The runner's `[PASS]` / `[PERF]` / `[REF]` lines are just the `1a` correctness-and-speed
+loop. Here it is for this kernel, to run yourself in a scratch script:
+
+```python
+import torch, triton
+import torch.nn.functional as F
+
+# reference: forward + the gradient via autograd (VJP with an upstream grad of ones)
+xr = x.detach().clone().requires_grad_(True)
+y_ref = F.silu(xr)
+y_ref.sum().backward()                       # fills xr.grad
+y, gx = silu_fwd_bwd(x)                       # your fused kernel returns BOTH outputs
+torch.testing.assert_close(y,  y_ref,   atol=1e-5, rtol=1e-5)   # elementwise fp32 -> tight
+torch.testing.assert_close(gx, xr.grad, atol=1e-5, rtol=1e-5)
+
+ms   = triton.testing.do_bench(lambda: silu_fwd_bwd(x), warmup=25, rep=100, return_mode="median")
+gbps = 4 * x.numel() * x.element_size() / (ms * 1e-3) / 1e9   # fwd: read x, write y; bwd: read, write grad
+print(f"{gbps:.0f} GB/s")
+```
+
+Bandwidth-bound, and unusually **tight** (`1e-5`): SiLU and its derivative are elementwise
+fp32 with no reduction, so a correct kernel matches almost exactly — slack this tight is what
+catches a wrong derivative formula. Fusing forward + backward means four buffers of traffic in
+one pass. Full tolerance table and timing traps: `7b`.
+
 ## Going for performance
 - Both kernels are pure bandwidth-bound elementwise maps — the work is one
   `sigmoid` plus a couple of mults per element, so you should land near the
   memory roofline (the `0d` story). `tl.sigmoid` is one transcendental; building
   it from `tl.exp` costs the same.
-- `BLOCK_SIZE` of 1024–4096 is the usual sweet spot for a flat 1-D map; bigger
-  blocks mean fewer programs but more registers per program.
+- Block size is a tuning knob for a flat 1-D map: too small and you launch more
+  programs than needed; too large and each program burns more registers. Try a
+  few powers of two and watch the bandwidth number to find the sweet spot.
 - The fused win vs. plain autograd: PyTorch's unfused chain would
   materialize and re-read intermediate tensors. Fusing forward and backward each
   into a single kernel pass is exactly why `bytes_moved` is only `4*N` here.
