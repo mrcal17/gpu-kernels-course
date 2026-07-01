@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>gpu-kernels drills</title>
+<style>
+  :root {
+    --bg: #14161a;
+    --panel: #1d2026;
+    --panel2: #23272f;
+    --border: #32363f;
+    --text: #d8dbe2;
+    --muted: #8b90a0;
+    --accent: #5aa9e6;
+    --good: #4caf7d;
+    --bad: #e06c60;
+    --warn: #d9a441;
+    --box0: #e06c60;
+    --box1: #d9a441;
+    --box2: #c9c94a;
+    --box3: #7ab648;
+    --box4: #4caf7d;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 "Segoe UI", system-ui, sans-serif;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 24px 20px 60px; }
+  header { display: flex; align-items: baseline; gap: 16px; margin-bottom: 18px; }
+  header h1 { font-size: 20px; margin: 0; font-weight: 600; }
+  header .sub { color: var(--muted); font-size: 13px; }
+
+  nav { display: flex; gap: 6px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+  nav button {
+    background: none; border: none; color: var(--muted); font: inherit;
+    padding: 8px 16px; cursor: pointer; border-bottom: 2px solid transparent;
+  }
+  nav button:hover { color: var(--text); }
+  nav button.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+  section.tab { display: none; }
+  section.tab.active { display: block; }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 8px; padding: 18px 20px; margin-bottom: 16px;
+  }
+  .controls { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; }
+  .controls label { color: var(--muted); font-size: 13px; }
+  input[type=number], input[type=text], select {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 5px; padding: 6px 9px; font: inherit;
+  }
+  input[type=number] { width: 70px; }
+  button.btn {
+    background: var(--panel2); color: var(--text); border: 1px solid var(--border);
+    border-radius: 6px; padding: 7px 16px; font: inherit; cursor: pointer;
+  }
+  button.btn:hover { border-color: var(--accent); }
+  button.btn:disabled { opacity: 0.45; cursor: default; }
+  button.btn.primary { background: var(--accent); border-color: var(--accent); color: #0d1117; font-weight: 600; }
+  button.btn.good { background: var(--good); border-color: var(--good); color: #0d1117; font-weight: 600; }
+  button.btn.bad { background: var(--bad); border-color: var(--bad); color: #0d1117; font-weight: 600; }
+  button.btn.danger { border-color: var(--bad); color: var(--bad); }
+  button.btn.big { padding: 10px 28px; font-size: 16px; }
+
+  .badge {
+    display: inline-block; padding: 1px 9px; border-radius: 10px;
+    background: var(--panel2); border: 1px solid var(--border);
+    color: var(--muted); font-size: 12px; margin-right: 6px;
+  }
+  .badge.fam { color: var(--accent); border-color: var(--accent); }
+
+  .qtext, .atext { white-space: pre-wrap; }
+  .qtext { font-size: 17px; margin: 14px 0 18px; }
+  .atext { margin: 10px 0; }
+  .why { color: var(--muted); white-space: pre-wrap; margin-bottom: 16px; }
+  .progress { color: var(--muted); font-size: 13px; float: right; }
+  .kbd-hint { color: var(--muted); font-size: 12px; margin-top: 14px; }
+  kbd {
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 4px;
+    padding: 0 5px; font-size: 11px;
+  }
+
+  table { border-collapse: collapse; width: 100%; font-size: 14px; }
+  th, td { text-align: left; padding: 5px 12px 5px 0; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  td.num, th.num { text-align: right; }
+
+  .bar { display: flex; height: 16px; border-radius: 4px; overflow: hidden; background: var(--panel2); min-width: 200px; }
+  .bar span { display: block; height: 100%; }
+  .bar .b0 { background: var(--box0); } .bar .b1 { background: var(--box1); }
+  .bar .b2 { background: var(--box2); } .bar .b3 { background: var(--box3); }
+  .bar .b4 { background: var(--box4); }
+  .legend { display: flex; gap: 14px; font-size: 12px; color: var(--muted); margin: 6px 0 14px; }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; }
+
+  .exrow { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+  .exrow:last-child { border-bottom: none; }
+  .exrow .name { font-family: Consolas, monospace; min-width: 220px; }
+  .exrow .meta { color: var(--muted); font-size: 13px; flex: 1; }
+  .solved { color: var(--good); } .stub { color: var(--muted); }
+
+  .result-box {
+    background: var(--panel2); border: 1px solid var(--border); border-radius: 6px;
+    padding: 12px 14px; margin-top: 12px; font-family: Consolas, monospace; font-size: 13px;
+    white-space: pre-wrap; word-break: break-all;
+  }
+  details pre {
+    background: #0e1013; border: 1px solid var(--border); border-radius: 6px;
+    padding: 10px; overflow-x: auto; font-size: 12px; max-height: 340px;
+  }
+  details summary { cursor: pointer; color: var(--muted); margin-top: 10px; }
+
+  .spinner {
+    display: inline-block; width: 15px; height: 15px; vertical-align: -3px;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin 0.8s linear infinite; margin-right: 8px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  #toasts { position: fixed; bottom: 18px; right: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 50; }
+  .toast {
+    background: var(--panel2); border: 1px solid var(--bad); color: var(--text);
+    border-radius: 6px; padding: 10px 16px; max-width: 420px; font-size: 13px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.5);
+  }
+  .toast.info { border-color: var(--accent); }
+
+  .big-stat { font-size: 26px; font-weight: 600; }
+  .big-stat small { font-size: 13px; color: var(--muted); font-weight: 400; }
+  .stat-row { display: flex; gap: 40px; margin-bottom: 4px; }
+  .muted { color: var(--muted); }
+  .good-text { color: var(--good); } .bad-text { color: var(--bad); } .warn-text { color: var(--warn); }
+  .confirm-inline { margin-top: 8px; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  h3 { font-size: 15px; font-weight: 600; margin: 0 0 12px; }
+  .verdict { font-size: 17px; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>gpu-kernels drills</h1>
+    <span class="sub">quiz / stats / redo / predict</span>
+  </header>
+
+  <nav>
+    <button data-tab="quiz" class="active">Quiz</button>
+    <button data-tab="stats">Stats</button>
+    <button data-tab="redo">Redo</button>
+    <button data-tab="predict">Predict</button>
+  </nav>
+
+  <!-- ================= QUIZ ================= -->
+  <section id="tab-quiz" class="tab active">
+    <div class="panel" id="quiz-setup">
+      <div class="controls">
+        <label>Questions <input type="number" id="quiz-n" value="12" min="1" max="55"></label>
+        <label>Family
+          <select id="quiz-family"><option value="">all</option></select>
+        </label>
+        <label><input type="checkbox" id="quiz-new"> new only</label>
+        <button class="btn primary" id="quiz-start">Start session</button>
+        <span class="muted" id="quiz-due-hint"></span>
+      </div>
+    </div>
+    <div class="panel" id="quiz-card" style="display:none">
+      <span class="progress" id="quiz-progress"></span>
+      <span class="badge fam" id="quiz-fam"></span>
+      <span class="badge" id="quiz-source"></span>
+      <span class="badge" id="quiz-type"></span>
+      <div class="qtext" id="quiz-q"></div>
+      <div id="quiz-reveal-area">
+        <button class="btn primary big" id="quiz-reveal">Reveal</button>
+      </div>
+      <div id="quiz-answer-area" style="display:none">
+        <div class="atext"><b>A:</b> <span id="quiz-a"></span></div>
+        <div class="why"><b>Why:</b> <span id="quiz-why"></span></div>
+        <button class="btn good big" id="quiz-got">Got it</button>
+        <button class="btn bad big" id="quiz-missed">Missed it</button>
+      </div>
+      <div class="kbd-hint"><kbd>Space</kbd> reveal &nbsp; <kbd>Y</kbd>/<kbd>G</kbd> got it &nbsp; <kbd>N</kbd>/<kbd>M</kbd> missed</div>
+    </div>
+    <div class="panel" id="quiz-summary" style="display:none"></div>
+  </section>
+
+  <!-- ================= STATS ================= -->
+  <section id="tab-stats" class="tab">
+    <div class="panel">
+      <div class="stat-row">
+        <div class="big-stat" id="stats-due">-<br><small>due today</small></div>
+        <div class="big-stat" id="stats-acc">-<br><small>overall accuracy</small></div>
+        <div class="big-stat" id="stats-mape">-<br><small>prediction MAPE</small></div>
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Leitner boxes by family</h3>
+      <div class="legend">
+        <span><i style="background:var(--box0)"></i>box 0 (now)</span>
+        <span><i style="background:var(--box1)"></i>1 (1d)</span>
+        <span><i style="background:var(--box2)"></i>2 (3d)</span>
+        <span><i style="background:var(--box3)"></i>3 (10d)</span>
+        <span><i style="background:var(--box4)"></i>4 (30d)</span>
+      </div>
+      <table id="stats-family-table">
+        <thead><tr><th>family</th><th>boxes</th><th class="num">accuracy</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+    <div class="panel">
+      <h3>Predictions</h3>
+      <div id="stats-pred"></div>
+    </div>
+  </section>
+
+  <!-- ================= REDO ================= -->
+  <section id="tab-redo" class="tab">
+    <div class="panel">
+      <h3>Blank-page redo</h3>
+      <p class="muted" style="margin-top:0">Backs up your kernel.py to <code>solutions/redo_backups/</code>, then resets it to the pristine stub from git HEAD. The stub is verified retrievable <em>before</em> anything is touched.</p>
+      <div id="redo-list" class="muted">Loading...</div>
+      <div id="redo-result"></div>
+    </div>
+  </section>
+
+  <!-- ================= PREDICT ================= -->
+  <section id="tab-predict" class="tab">
+    <div class="panel">
+      <h3>Predict-then-run calibration</h3>
+      <p class="muted" style="margin-top:0">Commit to a number, then the harness measures the real thing. Runs the actual GPU benchmark and takes several seconds.</p>
+      <div class="controls">
+        <label>Exercise
+          <select id="pred-ex"></select>
+        </label>
+        <label>Predicted <span id="pred-unit" class="muted"></span>
+          <input type="number" id="pred-value" step="any" style="width:110px">
+        </label>
+        <label>Reasoning (optional)
+          <input type="text" id="pred-reason" style="width:260px" placeholder="one line">
+        </label>
+        <button class="btn primary" id="pred-run">Run benchmark</button>
+      </div>
+      <div id="pred-status" style="margin-top:12px"></div>
+      <div id="pred-result"></div>
+    </div>
+  </section>
+</div>
+
+<div id="toasts"></div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+
+// ---------- plumbing ----------
+async function api(path, body) {
+  const opts = body !== undefined
+    ? { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body) }
+    : {};
+  let res;
+  try { res = await fetch(path, opts); }
+  catch (e) { throw new Error("Server unreachable -- is drill/server.py running?"); }
+  let data = null;
+  try { data = await res.json(); } catch (e) { /* non-JSON error page */ }
+  if (!res.ok) throw new Error((data && data.error) || (res.status + " " + res.statusText));
+  return data;
+}
+
+function toast(msg, kind) {
+  const el = document.createElement("div");
+  el.className = "toast" + (kind === "info" ? " info" : "");
+  el.textContent = msg;
+  $("#toasts").appendChild(el);
+  setTimeout(() => el.remove(), 6000);
+}
+
+function esc(s) {
+  const d = document.createElement("div");
+  d.textContent = s == null ? "" : String(s);
+  return d.innerHTML;
+}
+
+// ---------- tabs ----------
+document.querySelectorAll("nav button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll("nav button").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll("section.tab").forEach(s => s.classList.remove("active"));
+    btn.classList.add("active");
+    $("#tab-" + btn.dataset.tab).classList.add("active");
+    if (btn.dataset.tab !== "quiz") refreshOverview();
+  });
+});
+function activeTab() {
+  return document.querySelector("nav button.active").dataset.tab;
+}
+
+// ---------- overview (shared data) ----------
+let overview = null;
+
+async function refreshOverview() {
+  try {
+    overview = await api("/api/overview");
+    renderQuizControls();
+    renderStats();
+    renderRedo();
+    renderPredictControls();
+  } catch (e) { toast(e.message); }
+}
+
+// ---------- quiz ----------
+let quiz = null;  // {sessionId, questions, idx, results:[{q, correct}], revealed}
+
+function renderQuizControls() {
+  const sel = $("#quiz-family");
+  const cur = sel.value;
+  sel.innerHTML = '<option value="">all</option>';
+  overview.families.forEach(f => {
+    const o = document.createElement("option");
+    o.value = f; o.textContent = f;
+    if (overview.weak_families.includes(f)) o.textContent += " (weak)";
+    sel.appendChild(o);
+  });
+  sel.value = cur;
+  $("#quiz-due-hint").textContent =
+    overview.quiz.due_today + "/" + overview.quiz.total + " due today";
+}
+
+async function startQuiz() {
+  const n = parseInt($("#quiz-n").value, 10) || 12;
+  const family = $("#quiz-family").value || null;
+  const newOnly = $("#quiz-new").checked;
+  try {
+    const r = await api("/api/quiz/start", { n: n, family: family, new_only: newOnly });
+    if (!r.questions.length) {
+      toast(newOnly ? "Nothing due (no unseen questions)."
+                    : "Nothing due. Come back tomorrow, or tick 'new only'.", "info");
+      return;
+    }
+    quiz = { sessionId: r.session_id, questions: r.questions, idx: 0,
+             results: [], revealed: false };
+    $("#quiz-summary").style.display = "none";
+    $("#quiz-card").style.display = "block";
+    showQuestion();
+  } catch (e) { toast(e.message); }
+}
+
+function showQuestion() {
+  const q = quiz.questions[quiz.idx];
+  quiz.revealed = false;
+  $("#quiz-progress").textContent = (quiz.idx + 1) + "/" + quiz.questions.length;
+  $("#quiz-fam").textContent = q.family;
+  $("#quiz-source").textContent = q.source;
+  $("#quiz-type").textContent = q.type;
+  $("#quiz-q").textContent = q.q;
+  $("#quiz-reveal-area").style.display = "block";
+  $("#quiz-answer-area").style.display = "none";
+}
+
+async function reveal() {
+  if (!quiz || quiz.revealed) return;
+  const q = quiz.questions[quiz.idx];
+  try {
+    const r = await api("/api/quiz/reveal", { id: q.id });
+    quiz.revealed = true;
+    $("#quiz-a").textContent = r.a;
+    $("#quiz-why").textContent = r.why;
+    $("#quiz-reveal-area").style.display = "none";
+    $("#quiz-answer-area").style.display = "block";
+  } catch (e) { toast(e.message); }
+}
+
+async function grade(correct) {
+  if (!quiz || !quiz.revealed) return;
+  const q = quiz.questions[quiz.idx];
+  quiz.revealed = false;  // debounce double-presses
+  try {
+    // Persisted immediately server-side -- closing the tab loses nothing.
+    await api("/api/quiz/grade", { id: q.id, correct: correct });
+  } catch (e) {
+    toast("Grade not saved: " + e.message);
+    quiz.revealed = true;
+    return;
+  }
+  quiz.results.push({ q: q, correct: correct });
+  quiz.idx += 1;
+  if (quiz.idx < quiz.questions.length) showQuestion();
+  else await finishQuiz();
+}
+
+async function finishQuiz() {
+  $("#quiz-card").style.display = "none";
+  const right = quiz.results.filter(r => r.correct).length;
+  const fams = {};
+  quiz.results.forEach(r => {
+    const f = fams[r.q.family] || { got: 0, tot: 0 };
+    f.got += r.correct ? 1 : 0; f.tot += 1;
+    fams[r.q.family] = f;
+  });
+  let famRows = Object.keys(fams).sort().map(f =>
+    "<tr><td>" + esc(f) + "</td><td class='num'>" + fams[f].got + "/" + fams[f].tot + "</td></tr>"
+  ).join("");
+  let dueLine = "";
+  try {
+    overview = await api("/api/overview");
+    dueLine = "<p class='muted'>Due by tomorrow: <b>" + overview.quiz.due_tomorrow +
+              "</b> &nbsp; due within 3 days: <b>" + overview.quiz.due_3d + "</b></p>";
+    renderQuizControls(); renderStats(); renderRedo(); renderPredictControls();
+  } catch (e) { /* summary still useful without it */ }
+  const el = $("#quiz-summary");
+  el.innerHTML =
+    "<h3>Session done</h3>" +
+    "<div class='big-stat'>" + right + "/" + quiz.results.length +
+    " <small>correct</small></div>" +
+    "<table style='max-width:380px;margin-top:10px'>" + famRows + "</table>" +
+    dueLine +
+    "<button class='btn primary' style='margin-top:10px' onclick=\"startQuiz()\">Another session</button>";
+  el.style.display = "block";
+  quiz = null;
+}
+
+$("#quiz-start").addEventListener("click", startQuiz);
+$("#quiz-reveal").addEventListener("click", reveal);
+$("#quiz-got").addEventListener("click", () => grade(true));
+$("#quiz-missed").addEventListener("click", () => grade(false));
+
+document.addEventListener("keydown", e => {
+  if (activeTab() !== "quiz" || !quiz) return;
+  const t = e.target.tagName;
+  if (t === "INPUT" || t === "TEXTAREA" || t === "SELECT") return;
+  const k = e.key.toLowerCase();
+  if (k === " " && !quiz.revealed) { e.preventDefault(); reveal(); }
+  else if ((k === "y" || k === "g") && quiz.revealed) grade(true);
+  else if ((k === "n" || k === "m") && quiz.revealed) grade(false);
+});
+
+// ---------- stats ----------
+function renderStats() {
+  const q = overview.quiz;
+  $("#stats-due").innerHTML = q.due_today + "/" + q.total + "<br><small>due today</small>";
+
+  let seen = 0, correct = 0;
+  Object.values(q.families).forEach(f => { seen += f.seen; correct += f.correct; });
+  $("#stats-acc").innerHTML =
+    (seen ? Math.round(100 * correct / seen) + "%" : "--") +
+    "<br><small>overall accuracy (" + seen + " answers)</small>";
+
+  const mape = overview.predictions.overall_mape;
+  $("#stats-mape").innerHTML =
+    (mape == null ? "--" : mape.toFixed(1) + "%") + "<br><small>prediction MAPE</small>";
+
+  const tbody = $("#stats-family-table tbody");
+  tbody.innerHTML = "";
+  Object.keys(q.families).sort().forEach(fam => {
+    const f = q.families[fam];
+    const total = f.boxes.reduce((a, b) => a + b, 0) || 1;
+    const segs = f.boxes.map((c, i) =>
+      c ? "<span class='b" + i + "' style='width:" + (100 * c / total) +
+          "%' title='box " + i + ": " + c + "'></span>" : ""
+    ).join("");
+    const acc = f.accuracy == null ? "--" : Math.round(f.accuracy) + "%";
+    const weak = overview.weak_families.includes(fam)
+      ? " <span class='warn-text' title='in WEAK_FAMILIES'>*</span>" : "";
+    tbody.insertAdjacentHTML("beforeend",
+      "<tr><td>" + esc(fam) + weak + "</td>" +
+      "<td><div class='bar'>" + segs + "</div>" +
+      "<span class='muted' style='font-size:12px'> " + f.boxes.join("/") + "</span></td>" +
+      "<td class='num'>" + acc + "</td></tr>");
+  });
+
+  const pred = overview.predictions;
+  const box = $("#stats-pred");
+  if (!pred.rows.length) {
+    box.innerHTML = "<span class='muted'>No predictions logged yet.</span>";
+    return;
+  }
+  let rows = pred.rows.map(r => {
+    const err = parseFloat(r.pct_error);
+    const cls = err <= 10 ? "good-text" : (err <= 30 ? "warn-text" : "bad-text");
+    return "<tr><td>" + esc(r.date) + "</td><td>" + esc(r.exercise) + "</td>" +
+           "<td class='num'>" + esc(r.predicted) + "</td>" +
+           "<td class='num'>" + esc(r.measured) + "</td>" +
+           "<td class='num " + cls + "'>" + esc(r.pct_error) + "%</td>" +
+           "<td>" + esc(r.unit) + "</td></tr>";
+  }).join("");
+  let perEx = Object.keys(pred.per_exercise).map(ex =>
+    "<span class='badge'>" + esc(ex) + " " +
+    pred.per_exercise[ex].mape.toFixed(1) + "% (n=" + pred.per_exercise[ex].n + ")</span>"
+  ).join(" ");
+  box.innerHTML =
+    "<table><thead><tr><th>date</th><th>exercise</th><th class='num'>pred</th>" +
+    "<th class='num'>meas</th><th class='num'>err</th><th>unit</th></tr></thead>" +
+    "<tbody>" + rows + "</tbody></table>" +
+    "<p class='muted'>MAPE overall: <b>" + pred.overall_mape.toFixed(1) + "%</b> &nbsp; " +
+    perEx + "</p>";
+}
+
+// ---------- redo ----------
+function renderRedo() {
+  const list = $("#redo-list");
+  const exs = overview.exercises.filter(e => e.has_kernel);
+  if (!exs.length) { list.textContent = "No exercises with kernel.py found."; return; }
+  list.innerHTML = "";
+  list.classList.remove("muted");
+  exs.forEach(ex => {
+    const row = document.createElement("div");
+    row.className = "exrow";
+    const status = ex.solved_guess === true
+      ? "<span class='solved'>solved (differs from HEAD)</span>"
+      : (ex.solved_guess === false ? "<span class='stub'>pristine stub</span>"
+                                   : "<span class='stub'>unknown (not in git?)</span>");
+    row.innerHTML =
+      "<span class='name'>" + esc(ex.name) + "</span>" +
+      "<span class='meta'>" + status +
+      " &nbsp; backups: " + ex.backups.length + "</span>";
+    const redoBtn = document.createElement("button");
+    redoBtn.className = "btn danger";
+    redoBtn.textContent = "Redo (blank-page)";
+    redoBtn.addEventListener("click", () => confirmRedo(row, ex));
+    const restBtn = document.createElement("button");
+    restBtn.className = "btn";
+    restBtn.textContent = "Restore latest backup";
+    restBtn.disabled = !ex.backups.length;
+    restBtn.addEventListener("click", () => doRestore(ex));
+    row.appendChild(redoBtn);
+    row.appendChild(restBtn);
+    list.appendChild(row);
+  });
+}
+
+function confirmRedo(row, ex) {
+  const old = row.querySelector(".confirm-inline");
+  if (old) { old.remove(); return; }
+  const div = document.createElement("div");
+  div.className = "confirm-inline";
+  div.style.flexBasis = "100%";
+  div.innerHTML =
+    "<span class='muted'>This wipes kernel.py back to the stub (after backing it up). " +
+    "Type <b>" + esc(ex.name) + "</b> to confirm:</span>";
+  const inp = document.createElement("input");
+  inp.type = "text"; inp.placeholder = ex.name; inp.style.width = "220px";
+  const go = document.createElement("button");
+  go.className = "btn danger"; go.textContent = "Confirm redo"; go.disabled = true;
+  const cancel = document.createElement("button");
+  cancel.className = "btn"; cancel.textContent = "Cancel";
+  inp.addEventListener("input", () => { go.disabled = inp.value.trim() !== ex.name; });
+  cancel.addEventListener("click", () => div.remove());
+  go.addEventListener("click", async () => {
+    go.disabled = true;
+    try {
+      const r = await api("/api/redo", { ex: ex.name });
+      $("#redo-result").innerHTML =
+        "<div class='result-box'>Backed up to:\n  " + esc(r.backup_path) +
+        "\nReset kernel.py to the pristine stub." +
+        "\nValidate your rebuild with:\n  " + esc(r.runner_cmd) + "</div>";
+      toast("Redo done: " + ex.name, "info");
+      await refreshOverview();
+    } catch (e) { toast(e.message); go.disabled = false; }
+  });
+  div.appendChild(inp); div.appendChild(go); div.appendChild(cancel);
+  row.appendChild(div);
+  inp.focus();
+}
+
+async function doRestore(ex) {
+  if (!confirm("Overwrite " + ex.name + "/kernel.py with the latest backup (" +
+               ex.backups[ex.backups.length - 1] + ")?")) return;
+  try {
+    const r = await api("/api/redo/restore", { ex: ex.name });
+    $("#redo-result").innerHTML =
+      "<div class='result-box'>Restored from:\n  " + esc(r.restored_from) + "</div>";
+    toast("Restored: " + ex.name, "info");
+    await refreshOverview();
+  } catch (e) { toast(e.message); }
+}
+
+// ---------- predict ----------
+function renderPredictControls() {
+  const sel = $("#pred-ex");
+  const cur = sel.value;
+  sel.innerHTML = "";
+  overview.exercises
+    .filter(e => e.has_kernel && e.metric && e.metric !== "none")
+    .forEach(e => {
+      const o = document.createElement("option");
+      o.value = e.name; o.textContent = e.name; o.dataset.unit = e.unit;
+      sel.appendChild(o);
+    });
+  if (cur) sel.value = cur;
+  updatePredUnit();
+}
+
+function updatePredUnit() {
+  const opt = $("#pred-ex").selectedOptions[0];
+  $("#pred-unit").textContent = opt ? "(" + opt.dataset.unit + ")" : "";
+}
+$("#pred-ex").addEventListener("change", updatePredUnit);
+
+$("#pred-run").addEventListener("click", async () => {
+  const ex = $("#pred-ex").value;
+  const val = parseFloat($("#pred-value").value);
+  if (!ex) { toast("Pick an exercise."); return; }
+  if (isNaN(val)) { toast("Enter a predicted number first."); return; }
+  const btn = $("#pred-run");
+  btn.disabled = true;
+  $("#pred-result").innerHTML = "";
+  $("#pred-status").innerHTML =
+    "<span class='spinner'></span>Running python -m harness.runner " +
+    esc(ex.split("_")[0]) + " -- this takes a while (real GPU benchmark)...";
+  try {
+    const r = await api("/api/predict/run",
+      { ex: ex, predicted: val, reasoning: $("#pred-reason").value });
+    $("#pred-status").innerHTML = "";
+    if (r.status === "todo" || r.status === "no_perf") {
+      $("#pred-result").innerHTML =
+        "<div class='result-box warn-text'>" + esc(r.message) + "</div>" +
+        rawBlock(r.raw_output);
+      return;
+    }
+    const cls = r.pct_error <= 10 ? "good-text" : (r.pct_error <= 30 ? "warn-text" : "bad-text");
+    $("#pred-result").innerHTML =
+      "<div class='verdict'>Predicted <b>" + r.predicted + " " + esc(r.unit) +
+      "</b>, measured <b>" + r.measured + " " + esc(r.unit) + "</b> " +
+      "<span class='" + cls + "'>(" + r.pct_error + "% error)</span></div>" +
+      "<div class='" + cls + "'>Verdict: " + esc(r.verdict) + "</div>" +
+      rawBlock(r.raw_output);
+    $("#pred-value").value = ""; $("#pred-reason").value = "";
+    refreshOverview();  // predictions table on the stats tab
+  } catch (e) {
+    $("#pred-status").innerHTML = "";
+    toast(e.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+function rawBlock(out) {
+  return "<details><summary>raw runner output</summary><pre>" +
+         esc(out) + "</pre></details>";
+}
+
+// ---------- boot ----------
+refreshOverview();
+</script>
+</body>
+</html>

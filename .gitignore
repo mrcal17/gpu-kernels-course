@@ -17,3 +17,6 @@ build/
 
 # personal worked solutions -- never commit (course rule: no worked kernels in the repo)
 solutions/
+
+# drill CLI state (quiz boxes, prediction log)
+drill/.state/

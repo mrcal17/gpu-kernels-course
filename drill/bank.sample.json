@@ -1,0 +1,38 @@
+[
+  {
+    "id": "ls-001",
+    "family": "layout-strides",
+    "type": "recall",
+    "q": "A row-major (M, N) fp32 tensor: what is the stride (in elements) between vertically adjacent elements, i.e. (i, j) and (i+1, j)?",
+    "a": "N elements (the row stride).",
+    "why": "Row-major stores each row contiguously, so moving down one row skips a whole row of N elements. This is why column-wise access is uncoalesced.",
+    "source": "lecture 1e / e06_transpose"
+  },
+  {
+    "id": "np-001",
+    "family": "numerics-precision",
+    "type": "recall",
+    "q": "Why does softmax subtract the row max before exponentiating?",
+    "a": "exp(x) overflows fp32 around x ~ 88; subtracting the max makes the largest argument 0, so every exp is in (0, 1].",
+    "why": "The result is mathematically identical (the shift cancels in the ratio) but numerically safe.",
+    "source": "lecture 1d / e05_softmax"
+  },
+  {
+    "id": "bw-001",
+    "family": "bandwidth-roofline",
+    "type": "estimate",
+    "q": "Vector add on N fp32 elements moves how many bytes total (loads + stores)?",
+    "a": "12N bytes: read a (4N), read b (4N), write out (4N).",
+    "why": "Memory-bound kernels are judged on bytes moved / time; knowing the traffic is step one of any bandwidth estimate.",
+    "source": "e01_vector_add spec"
+  },
+  {
+    "id": "ex-001",
+    "family": "execution-model",
+    "type": "recall",
+    "q": "In Triton, what does tl.program_id(axis=0) identify, and what is the classic bug if the last program's block runs past the end of the data?",
+    "a": "The index of this program instance in the launch grid; without a mask the last block does out-of-bounds loads/stores.",
+    "why": "Grid = ceil(N / BLOCK_SIZE) programs, so the tail block is partially valid -- every load/store needs the offsets < n_elements mask.",
+    "source": "lecture 1a / e01_vector_add"
+  }
+]

@@ -1,0 +1,497 @@
+[
+  {
+    "id": "layout-001",
+    "family": "layout-strides",
+    "type": "recall",
+    "q": "In the addressing formula address = base + sum(index_i * stride_i), what exactly does a stride convert, and why is an index by itself not a memory distance?",
+    "a": "A stride converts a count of index steps along one axis into a distance in memory (elements or bytes). An index alone says 'how many steps along this logical axis'; only after multiplying by that axis's stride does it become how far the address actually moves.",
+    "why": "This is the core layout fact: logical coordinates and physical addresses are linked only through strides. Every 2-D kernel builds addresses as offs_m*stride_row + offs_n*stride_col for exactly this reason.",
+    "source": "1e s1"
+  },
+  {
+    "id": "layout-002",
+    "family": "layout-strides",
+    "type": "numeric",
+    "q": "A contiguous row-major (M, N) = (1024, 512) fp32 tensor. You add 1 to the ROW index. How many bytes does the address move?",
+    "a": "2048 bytes (row stride = N = 512 elements, times 4 bytes/element).",
+    "why": "In row-major layout the row stride equals the number of columns: stepping one row down must skip over an entire row of N elements. Bytes = 512 * 4 = 2048.",
+    "source": "1e s1"
+  },
+  {
+    "id": "layout-003",
+    "family": "layout-strides",
+    "type": "numeric",
+    "q": "Same contiguous row-major (1024, 512) fp32 tensor. You add 1 to the COLUMN index. How many bytes does the address move?",
+    "a": "4 bytes (column stride = 1 element = 4 bytes).",
+    "why": "Row-major stores each row contiguously, so consecutive columns are adjacent in memory: the last axis has stride 1 element. That is also why walking along a row is the coalesced direction.",
+    "source": "1e s1"
+  },
+  {
+    "id": "layout-004",
+    "family": "layout-strides",
+    "type": "recall",
+    "q": "In a row-major matrix, which index's stride is 1 element, and which physical direction does incrementing the OTHER index move you?",
+    "a": "The column (last) index has stride 1 - consecutive columns are adjacent bytes. Incrementing the row index jumps N elements forward in memory (one whole row's worth), a large physical hop even though it is 'one step' logically.",
+    "why": "Row-major = rows contiguous. The small stride is along the row; the big stride is across rows. Mixing these up is what turns an intended coalesced read into a strided one.",
+    "source": "1e s1"
+  },
+  {
+    "id": "layout-005",
+    "family": "layout-strides",
+    "type": "scenario",
+    "q": "You read one COLUMN of a row-major (M, N) matrix, one element per lane, consecutive lanes taking consecutive rows. What element stride separates consecutive lanes' addresses?",
+    "a": "Stride = N elements (the row stride, i.e. the number of columns). Consecutive lanes are one row apart, and each row step is N elements in memory.",
+    "why": "Walking the non-contiguous axis makes the layout's big stride appear between lanes - the classic transpose / column-reduction trap that craters coalescing.",
+    "source": "1b s3"
+  },
+  {
+    "id": "layout-006",
+    "family": "layout-strides",
+    "type": "recall",
+    "q": "In a Triton transpose kernel, what single change in the address arithmetic implements the transpose (no data is rearranged on-chip)?",
+    "a": "Swap which offset range drives which stride when building the OUTPUT addresses: the range that multiplied the input's row stride multiplies the output's column stride and vice versa. Transpose = stride swap in the pointer math.",
+    "why": "Element (i, j) of the input goes to (j, i) of the output; since addresses are index*stride sums, exchanging the roles of the two strides is the entire operation.",
+    "source": "1e s1"
+  },
+  {
+    "id": "layout-007",
+    "family": "layout-strides",
+    "type": "recall",
+    "q": "Give the standard Triton broadcasting expression that turns a row range offs_m and a column range offs_n into a full 2-D tile of addresses.",
+    "a": "offs = offs_m[:, None] * stride_row + offs_n[None, :] * stride_col (added to the base pointer). [:, None] makes a column vector, [None, :] a row vector, and broadcasting produces the BLOCK_M x BLOCK_N grid.",
+    "why": "This one expression is the 2-D indexing pattern for every matrix kernel in the course: each element of the tile gets base + i*stride_row + j*stride_col.",
+    "source": "1e s1"
+  },
+  {
+    "id": "layout-008",
+    "family": "layout-strides",
+    "type": "scenario",
+    "q": "Inside a tiled-matmul K-loop you finish one K-chunk and must advance the A-tile pointers to the next chunk. In general (arbitrary strides), what do you add to the pointers?",
+    "a": "BLOCK_K * (stride of the K axis of A). The index advance is BLOCK_K steps along K; it becomes a memory distance only after multiplying by that axis's stride (for a row-major (M, K) A that stride is 1 element, so it is BLOCK_K elements).",
+    "why": "Pointer advances are index counts times strides, never bare index counts - the same base+index*stride rule applied incrementally.",
+    "source": "1e s3"
+  },
+  {
+    "id": "layout-009",
+    "family": "layout-strides",
+    "type": "recall",
+    "q": "In the tiled matmul, which offsets stay FIXED for the whole life of a program, and which offset SLIDES during execution?",
+    "a": "The output-tile offsets offs_m and offs_n (this program's rows and columns of C) are fixed. The K-window slides: the A and B pointers advance by BLOCK_K along the contracted K axis each loop iteration.",
+    "why": "One program owns one C tile forever; only the contraction dimension is walked. Fixed output coordinates + sliding contraction offset is the shape of every tiled reduction-over-K kernel.",
+    "source": "1e s3"
+  },
+  {
+    "id": "layout-010",
+    "family": "layout-strides",
+    "type": "numeric",
+    "q": "Contiguous row-major (4096, 4096) fp32 matrix. How many bytes separate element [i][j] from element [i+2][j+3]?",
+    "a": "32780 bytes. Element distance = 2*4096 + 3 = 8195 elements; times 4 bytes = 32780.",
+    "why": "Apply address = base + row*stride_row + col*stride_col with stride_row = 4096 and stride_col = 1, then convert elements to bytes at the end.",
+    "source": "1e s1"
+  },
+  {
+    "id": "layout-011",
+    "family": "layout-strides",
+    "type": "inverse",
+    "q": "Your row-reduce kernel computes row addresses as row * n_cols. It passes on the contiguous test tensor but returns garbage on a transposed or sliced view of the same data. Diagnosis?",
+    "a": "The kernel assumed row stride == n_cols (width). On non-contiguous views the row's stride differs from its width, so the addresses land in the wrong rows. Fix: take stride_row as a kernel argument and use it in the address math.",
+    "why": "Idiomatic Triton never assumes contiguity; width is a logical count, stride is the physical distance, and they only coincide for a plain contiguous tensor.",
+    "source": "1c s3"
+  },
+  {
+    "id": "layout-012",
+    "family": "layout-strides",
+    "type": "scenario",
+    "q": "A column-major (M, N) fp32 matrix (columns stored contiguously). You add 1 to the ROW index. How far does the address move, and why is this the opposite of the row-major case?",
+    "a": "4 bytes - one element. Column-major stores each column contiguously, so the FIRST (row) index has stride 1; it is the column index that jumps M elements. A column-major (M, N) behaves exactly like a row-major (N, M) with the strides swapped.",
+    "why": "Layout names say which axis is contiguous. Swapping row-major for column-major swaps which stride is 1 and which is the big hop - the same stride-swap fact behind transpose.",
+    "source": "1e s1"
+  },
+  {
+    "id": "num-001",
+    "family": "numerics-precision",
+    "type": "recall",
+    "q": "Why does your fp32 matmul or row-sum differ from torch's answer in the last bits even when both are correct?",
+    "a": "Float addition is not associative - every add rounds - and a parallel/tiled kernel sums in a different ORDER than torch's kernel. Different order means different intermediate roundings, so the results differ in the last bits.",
+    "why": "(a+b)+c != a+(b+c) in floating point. This is expected behavior, which is why the harness compares with a tolerance rather than bit-exact equality.",
+    "source": "1c s5"
+  },
+  {
+    "id": "num-002",
+    "family": "numerics-precision",
+    "type": "recall",
+    "q": "What is 'swamping' in a long serial fp32 sum, and why does a tree/pairwise summation order typically have LOWER error?",
+    "a": "Swamping: once the running accumulator gets large, small addends round away entirely (1e8 + 1.0 rounds back to 1e8). The tree pairs partials of like magnitude, so small values combine with each other before meeting large ones - typically less error than the serial left-to-right sum.",
+    "why": "Error per add scales with the magnitude of the larger operand; keeping magnitudes matched keeps the rounding small. The parallel-friendly order happens to also be the numerically nicer one.",
+    "source": "1c s5"
+  },
+  {
+    "id": "num-003",
+    "family": "numerics-precision",
+    "type": "recall",
+    "q": "What value must masked-off lanes contribute in a masked load feeding a reduction, and what is it for sum vs max? Why is it a property of the reduction, not of any elementwise op applied earlier?",
+    "a": "The identity of the REDUCTION operator: 0.0 for sum (adding zero changes nothing), -inf for max (nothing beats it downward). It is determined by the operator that folds the values together - the elementwise math just passes the fill value through; what matters is that the fill cannot change the folded result.",
+    "why": "The masked lanes still participate in the reduce (SIMT lockstep), so the only safe fill is the value that the reduction ignores. Wrong identity = silently corrupted result on ragged tails.",
+    "source": "1c s3"
+  },
+  {
+    "id": "num-004",
+    "family": "numerics-precision",
+    "type": "scenario",
+    "q": "In the fused softmax kernel you load the row once with other=-inf on masked lanes. Explain why that single fill value is safe for BOTH the max pass and the sum pass.",
+    "a": "-inf is the identity of max, so masked lanes can never win the row max; and after the shift, exp(-inf - m) = 0, which is the identity of sum, so they contribute nothing to the denominator. One fill value serves both reductions.",
+    "why": "The exp map converts the max identity (-inf) into the sum identity (0), which is exactly why padding with the max identity up front works for the whole fused pipeline.",
+    "source": "1d s4"
+  },
+  {
+    "id": "num-005",
+    "family": "numerics-precision",
+    "type": "recall",
+    "q": "Why is max-subtraction in softmax EXACT rather than an approximation?",
+    "a": "Multiplying numerator and denominator by e^(-m) is an algebraic identity: softmax(x)_i = e^(x_i - m) / sum_j e^(x_j - m) for ANY constant m, because the common factor cancels exactly. Choosing m = max(x) just picks the constant that prevents overflow.",
+    "why": "The constant factors out of the sum of exponentials (e^(x-m) = e^x * e^(-m)); nothing about the distribution changes, only the floating-point range of the intermediates.",
+    "source": "1d s3"
+  },
+  {
+    "id": "num-006",
+    "family": "numerics-precision",
+    "type": "numeric",
+    "q": "After subtracting the row max m in stable softmax: what interval do all exponential terms lie in, and what is the minimum possible value of the denominator?",
+    "a": "Every term e^(x_i - m) is in (0, 1], and the denominator is at least 1 (the max element contributes e^0 = 1 exactly).",
+    "why": "All shifted exponents are <= 0 so no term exceeds 1 (no overflow), and the largest is exactly 1 so the sum cannot underflow to zero (no divide-by-zero).",
+    "source": "1d s3"
+  },
+  {
+    "id": "num-007",
+    "family": "numerics-precision",
+    "type": "numeric",
+    "q": "At roughly what input value does e^x overflow float32, and what is float32's maximum finite value?",
+    "a": "x of about 88-89: e^88 ~ 1.6e38 is still finite, e^89 already overflows. Float32 max is ~3.4e38.",
+    "why": "This is why naive softmax dies on ordinary logits - attention and classifier scores routinely exceed 88, sending exp to inf and the row to nan.",
+    "source": "1d s2"
+  },
+  {
+    "id": "num-008",
+    "family": "numerics-precision",
+    "type": "scenario",
+    "q": "You need sum(x_i^2) for an L2 norm without fp32 overflow. Why can't you subtract the max like softmax does, and what is the correct guard?",
+    "a": "Subtraction fails because sum((x-m)^2) is a DIFFERENT quantity - nothing factors out of a square the way e^(-m) factors out of an exponential. The guard is scaling: with m = max|x_i|, compute sum(x^2) = m^2 * sum((x/m)^2); every ratio is in [-1, 1], the sum stays bounded, and you multiply m^2 back at the end.",
+    "why": "Shift is exact only for exponentials (constants factor out multiplicatively); for squares the exact factorization is division by a constant, pulled out as m^2.",
+    "source": "1c s5"
+  },
+  {
+    "id": "num-009",
+    "family": "numerics-precision",
+    "type": "recall",
+    "q": "Why compare kernel output with torch.testing.assert_close instead of ==, and why does the right tolerance depend on the reduction length?",
+    "a": "assert_close compares within atol/rtol and reports diagnostics (max abs/rel error, mismatch count) on failure; == demands bit-exactness, which reordered float sums cannot give. Tolerance must loosen as the reduction gets longer because more additions mean more roundings and more reordering error (e.g. add is exact at 0/0; a 4096-long row sum or a K=1024 matmul needs 1e-2-1e-1 atol).",
+    "why": "The error budget scales with the number of accumulation steps; a per-element op has one rounding, a length-K reduction has ~K of them in a different order than torch.",
+    "source": "1a s9"
+  },
+  {
+    "id": "num-010",
+    "family": "numerics-precision",
+    "type": "inverse",
+    "q": "Your softmax kernel returns entire rows of nan whenever the input contains one large logit (say 95), but works on tame rows. Diagnosis?",
+    "a": "Missing max-subtraction. exp(95) overflows fp32 to inf, the denominator becomes inf, and every output is inf/inf = nan - one large element poisons the whole row. Fix: subtract the row max before exponentiating.",
+    "why": "The overflow threshold for e^x in fp32 is ~88, and inf is contagious through the normalization; stability requires the shift, it is correctness not an optimization.",
+    "source": "1d s2"
+  },
+  {
+    "id": "coal-001",
+    "family": "coalescing-sectors",
+    "type": "recall",
+    "q": "In what unit does the L2/DRAM memory system actually serve a warp's loads, and what determines the cost of one warp load?",
+    "a": "Aligned 32-byte sectors. The cost is the number of DISTINCT 32-byte sectors the warp's 32 addresses fall in - one sector moved per distinct sector touched, regardless of lane order.",
+    "why": "DRAM is not byte-addressable in practice; the hardware fuses a warp's requests into sectors, so bandwidth efficiency = bytes used / (sectors * 32 bytes). (The 128-byte L1 line is a different, coarser unit - sectors are what bill bandwidth.)",
+    "source": "1b s2"
+  },
+  {
+    "id": "coal-002",
+    "family": "coalescing-sectors",
+    "type": "numeric",
+    "q": "One warp reads 32 consecutive, aligned fp32 values. How many 32-byte sectors does it touch, and what is its efficiency?",
+    "a": "4 sectors (32 lanes * 4 bytes = 128 bytes = exactly 4 full sectors), 100% efficiency. This is the coalesced ideal.",
+    "why": "128 useful bytes fill 4 sectors with zero waste - 4 sectors/warp is the fp32 floor of fetched data and the ceiling of efficiency.",
+    "source": "1b s2"
+  },
+  {
+    "id": "coal-003",
+    "family": "coalescing-sectors",
+    "type": "numeric",
+    "q": "One warp reads fp32 with element stride 2 (lanes at 0, 2, 4, ...). How many 32-byte sectors, what efficiency, and roughly what effective bandwidth on the 896 GB/s card?",
+    "a": "8 sectors, 50% efficiency (128 used / 256 fetched), ~448 GB/s.",
+    "why": "Byte addresses span 0..248, hitting sectors 0-7; each sector delivers 32 bytes of which the warp uses 16. Effective BW ~ peak / min(s, 8) = 896/2.",
+    "source": "1b s3"
+  },
+  {
+    "id": "coal-004",
+    "family": "coalescing-sectors",
+    "type": "numeric",
+    "q": "Give the effective-bandwidth formula for an fp32 access with element stride s on this card, and evaluate it at stride 4.",
+    "a": "Effective BW ~ 896 / min(s, 8) GB/s. At stride 4: 896/4 = 224 GB/s (25% of peak).",
+    "why": "Efficiency falls as 1/s until stride 8, where every lane occupies its own sector and the waste saturates; min(s, 8) captures both regimes.",
+    "source": "1b s3"
+  },
+  {
+    "id": "coal-005",
+    "family": "coalescing-sectors",
+    "type": "recall",
+    "q": "Why does the strided-access bandwidth penalty SATURATE at stride 8 for fp32, and what is the floor in GB/s on this card?",
+    "a": "At stride 8 consecutive lanes are 32 bytes apart, so each lane sits in its own 32-byte sector - the warp fetches the maximum 32 sectors for 4 sectors' worth of useful data. A lane cannot waste more than its whole sector, so larger strides do no additional damage. Floor = 1/8 of peak ~ 112 GB/s.",
+    "why": "Efficiency = 4/32 = 12.5% at stride >= 8; that is the worst case for fp32 (note the old 128-byte-line model wrongly predicts ~3%).",
+    "source": "1b s3"
+  },
+  {
+    "id": "coal-006",
+    "family": "coalescing-sectors",
+    "type": "inverse",
+    "q": "Your fp32 copy kernel measures ~112 GB/s on the 896 GB/s card, at healthy occupancy. Most likely access pattern?",
+    "a": "A strided access with element stride >= 8 (e.g. reading a column of a wide row-major matrix, or an accidental stride in offs): every lane lands in its own 32-byte sector, giving the 1/8-of-peak floor.",
+    "why": "112 ~ 896/8 is the fingerprint of fully scattered fp32 lanes - one sector per lane, 12.5% efficiency; occupancy is fine, the sectors are the waste.",
+    "source": "1b s3"
+  },
+  {
+    "id": "coal-007",
+    "family": "coalescing-sectors",
+    "type": "inverse",
+    "q": "Your fp32 copy kernel measures ~450 GB/s - almost exactly half of the 896 GB/s peak. Most likely access pattern?",
+    "a": "Stride-2 access: consecutive lanes skip every other element, so each 32-byte sector is only half used - 8 sectors per warp instead of 4, 50% efficiency.",
+    "why": "Effective BW ~ peak/min(s, 8); a clean 1/2 of peak points at s = 2 rather than misalignment (which costs only ~1%).",
+    "source": "1b s3"
+  },
+  {
+    "id": "coal-008",
+    "family": "coalescing-sectors",
+    "type": "numeric",
+    "q": "A contiguous fp32 stream starts at a base address misaligned from the 32-byte sector grid. What is the efficiency for one warp in isolation, and for N consecutive streaming warps?",
+    "a": "One warp: 5 sectors instead of 4 -> 80%. Streaming N warps: 4N+1 sectors for 4N sectors of useful data -> efficiency ~ N/(N+1), a percent-level penalty (~99% for N=100).",
+    "why": "The straddled sector is only wasted once - the next warp uses the rest of it - so misalignment amortizes to ~1% while stride costs up to 8x. Stride is the expensive mistake; misalignment is the cheap one.",
+    "source": "1b s3"
+  },
+  {
+    "id": "coal-009",
+    "family": "coalescing-sectors",
+    "type": "inverse",
+    "q": "A kernel reads a row-major (4096, 4096) fp32 matrix column-by-column (consecutive lanes take consecutive rows). Predict its effective read bandwidth on this card and name the fix.",
+    "a": "~112 GB/s - the lane stride is 4096 elements, far past the stride-8 saturation, so it sits at the 1/8 floor. Fix: restructure so warps read along rows (the contiguous axis), e.g. tile the access as the transpose kernel does.",
+    "why": "Any stride >= 8 puts each fp32 lane in its own 32-byte sector; the column walk of a wide row-major matrix is the classic instance.",
+    "source": "1b s3"
+  },
+  {
+    "id": "roof-001",
+    "family": "roofline-intensity",
+    "type": "recall",
+    "q": "Define operational (arithmetic) intensity, with units, and state what the roofline model computes from it.",
+    "a": "I = FLOPs / bytes moved from DRAM, in FLOP/byte. The roofline caps attainable performance at P(I) = min(P_peak, B * I): a slanted memory roof B*I below the ridge, a flat compute roof P_peak above it.",
+    "why": "Intensity measures how much work each fetched byte performs; multiplied by bandwidth it gives the memory-bound performance limit, which the compute peak then clips.",
+    "source": "0d s4"
+  },
+  {
+    "id": "roof-002",
+    "family": "roofline-intensity",
+    "type": "numeric",
+    "q": "Compute the ridge-point intensity of the RTX 5070 Ti (fp32 peak ~44 TFLOP/s, DRAM ~896 GB/s).",
+    "a": "I_ridge = P_peak / B = 44e12 / 896e9 ~ 49 FLOP/byte.",
+    "why": "The ridge is where the memory roof B*I meets the compute roof P_peak; kernels below ~49 FLOP/byte are memory-bound on this card, above it compute-bound.",
+    "source": "0d s4"
+  },
+  {
+    "id": "roof-003",
+    "family": "roofline-intensity",
+    "type": "numeric",
+    "q": "Vector add c = a + b over fp32: compute its operational intensity and its performance ceiling on the 896 GB/s card.",
+    "a": "I = 1 FLOP / 12 bytes ~ 0.083 FLOP/byte (read a, read b, write c = 12 bytes per element). Ceiling = 896e9 * 1/12 ~ 75 GFLOP/s - deeply memory-bound.",
+    "why": "One add per element against three 4-byte transfers pins it to the memory roof; the chip's TFLOP/s are irrelevant, bandwidth is destiny.",
+    "source": "0c s3-4"
+  },
+  {
+    "id": "roof-004",
+    "family": "roofline-intensity",
+    "type": "recall",
+    "q": "Given a kernel's intensity I relative to the ridge, state the regime, the formula for its attainable performance, and which levers can help in each regime.",
+    "a": "I < I_ridge: memory-bound, attainable perf = B * I; help by raising I (reuse/fusion/tiling) or raising effective B (coalescing). I > I_ridge: compute-bound, attainable perf = P_peak; help with faster math (tensor cores, lower precision).",
+    "why": "The roofline turns 'is my kernel slow?' into 'is it near ITS roof?' - and tells you which optimizations can possibly move it.",
+    "source": "0d s4"
+  },
+  {
+    "id": "roof-005",
+    "family": "roofline-intensity",
+    "type": "numeric",
+    "q": "Naive square matmul (one dot product per output element, no reuse), fp32: compute its intensity and its GFLOP/s ceiling on this card. Does the intensity grow with N?",
+    "a": "I = 2N^3 FLOPs / 8N^3 bytes = 1/4 FLOP/byte, INDEPENDENT of N. Ceiling = 896 * 0.25 ~ 224 GFLOP/s - about 0.5% of the ~44 TFLOP/s compute roof.",
+    "why": "Each output reads 2N values used once (8N^3 bytes total), so intensity is O(1): no matter how big the matrix, the naive kernel is welded to the memory roof.",
+    "source": "1e s2"
+  },
+  {
+    "id": "roof-006",
+    "family": "roofline-intensity",
+    "type": "recall",
+    "q": "For square tiles of side T (BLOCK_M = BLOCK_N = BLOCK_K = T), what does tiling do to a matmul's arithmetic intensity, and why?",
+    "a": "I_tiled = T/4 FLOP/byte (fp32) - tiling multiplies intensity by the tile side. Each staged tile of A is reused for all BLOCK_N output columns and each tile of B for all BLOCK_M rows, so every DRAM byte does ~T FLOPs instead of 1; total traffic drops from 8N^3 to ~8N^3/T.",
+    "why": "Reuse is the entire game: the roofline dot slides right by a factor of T, from I = 1/4 toward and past the ridge (~49) as tiles grow.",
+    "source": "1e s4"
+  },
+  {
+    "id": "roof-007",
+    "family": "roofline-intensity",
+    "type": "recall",
+    "q": "Why can elementwise and reduction kernels NEVER cross the ridge, while matmul can?",
+    "a": "Elementwise ops and reductions do O(1) FLOPs per byte with no possible reuse - each input byte is needed once, so their intensity is fixed and tiny (e.g. ~0.08 for add) no matter how you write them. Matmul does O(N^3) FLOPs on O(N^2) data, so there is reuse to harvest: tiling raises I with tile size, letting it climb past the ridge into compute-bound territory.",
+    "why": "Intensity is bounded by the algorithm's inherent FLOPs-per-unique-byte; only algorithms with data reuse (matmul, attention) can trade on-chip memory for intensity.",
+    "source": "0c s4, 1e s4"
+  },
+  {
+    "id": "roof-008",
+    "family": "roofline-intensity",
+    "type": "inverse",
+    "q": "You doubled BLOCK_K in your tiled matmul hoping to raise arithmetic intensity, but I did not move at all. Why, and which knobs actually raise it?",
+    "a": "BLOCK_K cancels out of intensity: each K-step loads BLOCK_K*(Tm + Tn) elements and performs 2*Tm*Tn*BLOCK_K FLOPs, so the BLOCK_K divides away. Intensity depends only on the OUTPUT tile (I ~ 2/(1/Tm + 1/Tn) FLOP/element); raise BLOCK_M/BLOCK_N to raise I, and keep BLOCK_K thin to fit SRAM.",
+    "why": "Real kernels cross the ridge with large output tiles streamed by thin K-slices - that is why the cubic-tile 'SRAM wall' is an artifact of the counting model, not a law.",
+    "source": "1e s4"
+  },
+  {
+    "id": "red-001",
+    "family": "reduction-model",
+    "type": "recall",
+    "q": "In the standard GPU decomposition of a reduction-like kernel (row-sum, matmul), what does the GRID enumerate and what does the in-kernel LOOP handle?",
+    "a": "The grid enumerates OUTPUT tiles - one program per independent piece of the answer (one row's sum, one C tile). The loop inside the program walks the contracted/reduced axis (the columns of the row, the K dimension) in BLOCK-sized chunks, accumulating on-chip.",
+    "why": "Outputs are independent so they parallelize freely across programs; the reduced axis has a dependency (one accumulator) so it is serialized inside the program instead of across blocks that cannot synchronize.",
+    "source": "1c s3-4, 1e s3"
+  },
+  {
+    "id": "red-002",
+    "family": "reduction-model",
+    "type": "recall",
+    "q": "The fused softmax assigns one program per row and needs no loop. What condition makes that possible - and is it about the matrix being square?",
+    "a": "The row fits in one tile: n_cols <= BLOCK_SIZE, so a single tl.load brings the entire row on-chip and all three passes (max, exp+sum, divide) run on the resident copy. It has nothing to do with squareness - only the ROW length vs the block size matters; a wider row would force a tiled loop with running accumulators.",
+    "why": "One load + one store is the whole memory-bound win; the criterion is per-row capacity, not shape symmetry.",
+    "source": "1d s4"
+  },
+  {
+    "id": "red-003",
+    "family": "reduction-model",
+    "type": "recall",
+    "q": "State the Triton mental model: what do tl.program_id(axis) and tl.arange(0, BLOCK_SIZE) each represent, and how do they combine into global indices?",
+    "a": "program_id is this block's coordinate in the launch grid (CUDA's blockIdx; there is no threadIdx). tl.arange is the vector [0..BLOCK_SIZE-1] - all the per-lane indices of one program expressed as a single array. Global indices: offs = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE), giving the program its contiguous window.",
+    "why": "One Triton program = one CUDA block; you write the whole block's tile at once and the compiler splits it over warps/lanes. Contiguous offs is also what makes the loads coalesce.",
+    "source": "1a s2-3"
+  },
+  {
+    "id": "red-004",
+    "family": "reduction-model",
+    "type": "numeric",
+    "q": "Tree-reducing n = 1024 values: how many sequential steps (depth), how many total operations (work), and what were the serial counts?",
+    "a": "Depth = log2(1024) = 10 steps; work = n - 1 = 1023 operations (same as serial); the serial chain needed 1023 DEPENDENT steps.",
+    "why": "Associativity lets pairs fold in parallel, halving the live values each step: work is unchanged but the critical path collapses from n to log2(n) - on a parallel machine you pay the depth.",
+    "source": "1c s2"
+  },
+  {
+    "id": "red-005",
+    "family": "reduction-model",
+    "type": "recall",
+    "q": "Describe the two-level strategy for reducing an axis too long for one program's tile, and say why the row-reduce exercise does NOT need the second level.",
+    "a": "Level 1: G programs each reduce their own chunk to a partial, fully in parallel. Level 2: combine the G partials (a tiny second kernel, an atomic, or a host-side reduce). Row reduce skips level 2 because each row is an independent output - one program per row produces the final answer directly; no cross-block combination is ever needed.",
+    "why": "Blocks cannot synchronize with each other within a launch, so cross-block reductions must go through a combine stage; independent outputs sidestep it entirely.",
+    "source": "1c s4"
+  },
+  {
+    "id": "red-006",
+    "family": "reduction-model",
+    "type": "inverse",
+    "q": "Your row-sum kernel passes when n_cols is a multiple of BLOCK_SIZE but is slightly too large on ragged widths. Diagnosis?",
+    "a": "The masked tail is leaking into the sum: either the mask is missing on the load, or the fill value is not the sum identity 0.0 (e.g. defaulting or set to something nonzero), so overhang lanes add garbage. Fix: mask = offs < n_cols and other=0.0 on the load.",
+    "why": "The ceiling-division grid over-covers the row; only the mask plus the reduction identity make the overhang contribute nothing.",
+    "source": "1c s3"
+  },
+  {
+    "id": "red-007",
+    "family": "reduction-model",
+    "type": "scenario",
+    "q": "n = 1000 elements, BLOCK_SIZE = 128. How many programs launch, what do the extra lanes in the last program do, and do they execute at all?",
+    "a": "cdiv(1000, 128) = 8 programs covering 1024 lanes; the last program has 24 lanes with offs >= 1000. They DO execute (SIMT lockstep) but mask = offs < n suppresses their memory effect - loads return the fill value, stores are dropped.",
+    "why": "Grid and mask are two halves of one idea: ceiling division covers everything, the mask guards the excess. Masked lanes are predicated off, not skipped.",
+    "source": "1a s4-6"
+  },
+  {
+    "id": "occ-001",
+    "family": "occupancy-resources",
+    "type": "recall",
+    "q": "List the four per-SM occupancy caps on the RTX 5070 Ti (sm_120), including the resident-block cap and the caveat about NVIDIA's docs.",
+    "a": "1536 resident threads (= 48 warps), 24 resident blocks (NOT 32 - the Blackwell Tuning Guide's 32 is wrong for CC 12.0; the Programming Guide table and cudaDevAttrMaxBlocksPerMultiprocessor both say 24), 65536 registers, and 100 KB shared memory (48 KB/block default, ~99 KB opt-in). Resident blocks = min over all four rules.",
+    "why": "Whichever budget divides down to the smallest block count is the binding limiter; the block cap of 24 is what makes very small blocks unable to reach full occupancy.",
+    "source": "0b s6, 0d s2"
+  },
+  {
+    "id": "occ-002",
+    "family": "occupancy-resources",
+    "type": "numeric",
+    "q": "Block of 256 threads, compiler assigns 64 registers/thread. How many blocks does the register budget allow per SM, how many resident warps, and what occupancy?",
+    "a": "floor(65536 / (64*256)) = 4 blocks = 4*8 = 32 warps = 67% occupancy (32/48). Registers bind (threads alone would allow 6 blocks).",
+    "why": "Registers are partitioned across all resident threads: R*T per block against the 65536 pool. Full occupancy needs R <= 65536/1536 ~ 42 registers/thread.",
+    "source": "0d s2"
+  },
+  {
+    "id": "occ-003",
+    "family": "occupancy-resources",
+    "type": "numeric",
+    "q": "A block declares 60 KB of shared memory on this card (100 KB/SM). How many blocks can be resident per SM by the shared-memory rule alone?",
+    "a": "floor(100/60) = 1 block - no matter how few threads or registers the block uses.",
+    "why": "Shared memory is carved per block from the SM's 100 KB pool; one greedy block can single-handedly cap residency, which is the occupancy price of large tiles.",
+    "source": "0d s2"
+  },
+  {
+    "id": "occ-004",
+    "family": "occupancy-resources",
+    "type": "recall",
+    "q": "What is latency hiding FOR - i.e., what problem do resident warps solve, and does it make DRAM faster?",
+    "a": "When a warp stalls ~500 cycles on a DRAM load, the SM's scheduler issues from another ready resident warp in the next cycle, keeping the lanes busy. With enough independent warps in flight the stalls are covered by other warps' work. It does NOT reduce the latency - the load is just as slow; the machine simply never waits idle for it.",
+    "why": "Hidden, not reduced, is the key word: required concurrency = latency x throughput (Little's Law), and occupancy is the lever that buys that concurrency.",
+    "source": "0b s1, 0d s3"
+  },
+  {
+    "id": "occ-005",
+    "family": "occupancy-resources",
+    "type": "inverse",
+    "q": "A kernel launched with 32-thread blocks tops out at 50% occupancy even though it uses almost no registers or shared memory. Why?",
+    "a": "The 24-blocks-per-SM hardware cap binds: 24 blocks x 1 warp each = 24 resident warps out of 48 = 50%. The thread budget (1536/32 = 48 blocks) is irrelevant because the block cap is hit first. Fix: use bigger blocks (more warps per block).",
+    "why": "Tiny blocks waste block slots - each resident-block slot carries only one warp, so the cap, not any memory resource, is the limiter.",
+    "source": "0b s6"
+  },
+  {
+    "id": "val-001",
+    "family": "validation-benchmarking",
+    "type": "recall",
+    "q": "In the validate-then-benchmark loop, when must you compute the torch reference relative to running your kernel, and why?",
+    "a": "BEFORE running your kernel. A buggy kernel that writes in-place (or clobbers an input) would otherwise corrupt the very tensors the reference is computed from, silently invalidating your golden answer.",
+    "why": "ref = torch_op(inputs) first, then out = your_kernel(inputs), then assert_close(out, ref) - the ordering is part of the correctness protocol, not style.",
+    "source": "1a s9"
+  },
+  {
+    "id": "val-002",
+    "family": "validation-benchmarking",
+    "type": "recall",
+    "q": "State the course's do_bench convention (arguments and return mode), and why you must never time a single kernel launch.",
+    "a": "triton.testing.do_bench(fn, warmup=25, rep=100, return_mode=\"median\") - the course convention passes return_mode=\"median\" explicitly (do_bench's own default return_mode is mean). A single timed launch is dominated by launch overhead, cold caches/JIT warmup, and clock resolution, so it measures noise, not the kernel.",
+    "why": "Warmup discards the cold runs and the median of many reps resists outliers; only then is bytes/time a meaningful bandwidth number.",
+    "source": "1a s9, 1b s4"
+  },
+  {
+    "id": "val-003",
+    "family": "validation-benchmarking",
+    "type": "numeric",
+    "q": "A copy kernel over 64M fp32 elements runs in 1.2 ms (median). Compute the bytes moved, the achieved GB/s, and the fraction of the 896 GB/s peak.",
+    "a": "Bytes = 2 * 4 * 64e6 = 512 MB (read N + write N). Achieved = 5.12e8 / 1.2e-3 / 1e9 ~ 427 GB/s ~ 48% of peak.",
+    "why": "Achieved GB/s = (bytes read + bytes written) / time / 1e9, where the byte count is the operation's minimum required traffic, not whatever the implementation happened to fetch.",
+    "source": "1b s4"
+  },
+  {
+    "id": "val-004",
+    "family": "validation-benchmarking",
+    "type": "inverse",
+    "q": "Two benchmark runs of the same kernel report 0.61 ms and 0.94 ms as the MEAN of many reps; the medians agree at 0.60 ms. What happened, and which number do you trust?",
+    "a": "A few outlier reps (clock boost changes, another process, a stray sync) inflated one run's mean - the mean is not robust to one-sided timing spikes. Trust the median: it ignores outliers and is why the course passes return_mode=\"median\" to do_bench.",
+    "why": "GPU timing noise is one-sided (things only get slower, never faster than the true cost), so the median of many warm reps is the honest central estimate.",
+    "source": "1b s4, 1a s9"
+  }
+]

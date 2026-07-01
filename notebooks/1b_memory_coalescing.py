@@ -366,9 +366,9 @@ def _(mo):
       $\approx 4RC$ bytes (the output is negligible).
 
     The *time* $t$ comes from a benchmark. On the real GPU you'll use
-    `triton.testing.do_bench`, which runs the kernel many times, discards warmup, and
-    returns a robust median — never time a single launch (launch overhead and the clock's
-    resolution dominate). Then:
+    `triton.testing.do_bench`, which runs the kernel many times and discards warmup —
+    pass `return_mode="median"` for a robust median (the default is the mean). Never time
+    a single launch (launch overhead and the clock's resolution dominate). Then:
 
     $$\text{efficiency} = \frac{\text{achieved GB/s}}{896}
       \quad(\text{how close to the memory roof you got}).$$
