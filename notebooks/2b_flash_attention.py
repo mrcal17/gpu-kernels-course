@@ -113,9 +113,10 @@ def _(mo):
     Because each query block carries forward only a few statistics — a per-row
     running max $m$, a per-row running denominator $\ell$, and the partial output
     accumulator $O$ — the full $N\times N$ matrix is **never assembled**. HBM traffic
-    drops from $O(N^2)$ to $O(N^2/M_{\text{sram}})$ in the worst case and is
-    bandwidth-friendly because $Q$, $K$, $V$ are each read in a streaming, coalesced
-    pass.
+    drops to $\Theta(N^2 d^2 / M)$ for SRAM size $M$ — the FlashAttention paper's
+    bound; with the head dim $d$ fixed, read it as "$N^2$ divided by a large
+    SRAM-dependent factor" — and it's bandwidth-friendly because $Q$, $K$, $V$ are
+    each read in streaming, coalesced passes.
 
     The catch — and the reason this isn't trivial — is the softmax. Softmax needs the
     max and the sum **over the entire row**, but we're only ever looking at one
@@ -345,9 +346,10 @@ def _(mo):
 
     ```python
     # one program handles a BLOCK_M-row block of queries: Q_i in SRAM
-    m_i = full([BLOCK_M], -inf)          # running max,  per query row
-    l_i = zeros([BLOCK_M])               # running denominator
-    acc = zeros([BLOCK_M, d])            # running (unnormalized) output
+    m_i, l_i, acc = ...                  # init the running triple (max, denominator,
+                                         # unnormalized output) to the identity values
+                                         # you derived in section 3 -- ask yourself
+                                         # what makes the FIRST block's update exact
 
     for j in range(0, N, BLOCK_N):       # stream KV blocks
         k_j, v_j = load K[j], V[j]       # BLOCK_N rows each
@@ -383,14 +385,24 @@ def _(mo):
     $O(N)$: just the running $(m, \ell, O)$ triple, never the $N\times N$ matrix. That
     is the payoff in the heading. But its **HBM traffic** (total bytes moved) is *not*
     linear: each query block re-reads all of $K,V$, so traffic is
-    $O(N^2 d / M_{\text{sram}})$ — still super-linear, just divided by the block factor.
+    $\Theta(N^2 d^2 / M)$ for SRAM size $M$ (same bound as §2; $d$ fixed → still
+    quadratic in $N$, just shrunk by the SRAM factor).
 
-    The interactive below contrasts HBM traffic for naive attention (which writes and
-    re-reads the $N\times N$ scores) against FlashAttention (which re-streams $K,V$ per
-    query block but never materializes $S$). The naive curve is the steep
-    $O(N^2)$ that ends every long-context dream; the flash curve is the much gentler
-    $O(N^2/M_{\text{sram}})$. Slide $N$ up and watch the gap explode — at long context
-    it's orders of magnitude.
+    Be precise about the win, because **both curves below are $\Theta(N^2)$**. What
+    flash buys on *traffic* is a large **constant factor**: naive attention writes
+    $S$, reads it back for the softmax, writes $P$, and reads $P$ again for $PV$ —
+    four $N^2$-element round-trips, typically materialized in fp32 — while flash only
+    re-streams fp16 $K,V$ once per query block, with the block size set by what fits
+    in the ~100 KB SRAM budget. With $d=64$ that works out to roughly an order of
+    magnitude less traffic, and the ratio stays flat as $N$ grows.
+
+    So what *does* explode as you slide $N$ up? Naive's **absolute** traffic —
+    hundreds of MB, then tens of GB, per head — and its $N\times N$ resident matrix,
+    which no SRAM on earth could hold (at $N=32{,}768$ the fp32 score matrix alone
+    is 4 GB).
+    Flash's traffic grows at the same quadratic rate but ~an order of magnitude
+    lower, and its *footprint* stays $O(N)$ — that footprint, not the traffic
+    exponent, is what makes long context fit at all.
     """)
     return
 
@@ -410,41 +422,47 @@ def _(seqlen_slider):
         import matplotlib.pyplot as plt
 
         d = 64                # head dim
-        bytes_ = 2            # fp16
-        BLOCK_M = 128         # query-block rows (sets the K,V re-read factor)
+        bytes_ = 2            # fp16 for Q, K, V, O
+        SRAM_BYTES = 100 * 1024   # ~100 KB shared memory per SM (5070 Ti)
         N_user = int(seqlen_slider.value)
 
         Ns = np.array([512, 1024, 2048, 4096, 8192, 16384, 32768])
 
-        # Naive: read Q,K,V (Nd each); write S (N^2); read S for softmax; write P;
-        # read P and V for PV; write O. Dominated by the N^2 terms.
+        # Naive: read Q,K,V; then FOUR N^2-element round-trips for the score
+        # matrix -- write S, read S for softmax, write P, read P for P@V --
+        # typically materialized in fp32; V re-read for the P@V pass; write O.
         def naive_bytes(N):
             qkv = 3 * N * d * bytes_
-            scores = 2 * (N * N * bytes_)        # write + read of S/P (the killer)
+            scores = 4 * (N * N * 4)            # S write+read, P write+read, fp32
+            v_again = N * d * bytes_            # V read again in the P@V pass
             out = N * d * bytes_
-            return qkv + scores + out
+            return qkv + scores + v_again + out
 
-        # Flash: read Q once, but K,V are re-read once per Q-block (each of the
-        # N/BLOCK_M query blocks sweeps all of K,V), so K,V traffic is super-linear;
-        # write O once. The O(N) running state is the resident FOOTPRINT in SRAM, not
-        # the traffic. Traffic is O(N^2 d / BLOCK_M), still far below naive's O(N^2).
+        # Flash: the block size comes from the SRAM budget (per the FlashAttention
+        # paper), not a hand-picked constant: Q, K, V, and acc tiles of width d
+        # must all fit, so B ~ SRAM / (4 * d * bytes). Each of the N/B query
+        # blocks re-streams all of K,V -> traffic Theta(N^2 d^2 / SRAM). The O(N)
+        # running state is the resident FOOTPRINT in SRAM, not the traffic.
+        B = SRAM_BYTES // (4 * d * bytes_)      # ~200 rows with d=64, fp16, 100 KB
+
         def flash_bytes(N):
-            qkv = N * d * bytes_ + (N / BLOCK_M) * (2 * N * d * bytes_)  # K,V re-read per Q-block
+            q = N * d * bytes_                          # Q read once
+            kv = (N / B) * (2 * N * d * bytes_)         # K,V re-read per Q-block
             out = N * d * bytes_
-            return qkv + out
+            return q + kv + out
 
         naive = np.array([naive_bytes(int(n)) for n in Ns]) / 1e6   # MB
         flash = np.array([flash_bytes(int(n)) for n in Ns]) / 1e6
 
         nb = naive_bytes(N_user) / 1e6
         fb = flash_bytes(N_user) / 1e6
-        ratio = nb / fb
+        ratio = nb / fb   # ~12x with d=64, fp16, 100 KB -- flat in N (both O(N^2))
 
         _fig, _ax = plt.subplots(figsize=(8, 4.2))
         _ax.plot(Ns, naive, "-o", color="#d65f5f", linewidth=2,
-                 label="naive  (O(N^2): materializes S)")
+                 label="naive  (4 fp32 round-trips of the N x N scores)")
         _ax.plot(Ns, flash, "-o", color="#4c9f70", linewidth=2,
-                 label="flash  (O(N^2 / M_sram): K,V re-read per Q-block)")
+                 label="flash  (Theta(N^2 d^2 / M_sram): K,V re-read per Q-block)")
         _ax.axvline(N_user, color="#999", linestyle="--", linewidth=1)
         _ax.scatter([N_user], [nb], color="#d65f5f", s=80, zorder=5)
         _ax.scatter([N_user], [fb], color="#4c9f70", s=80, zorder=5)
@@ -453,7 +471,7 @@ def _(seqlen_slider):
         _ax.set_xlabel("sequence length N  (log)")
         _ax.set_ylabel("HBM traffic per head (MB, log)")
         _ax.set_title(f"N={N_user:,}:  naive {nb:,.0f} MB  vs  flash {fb:,.1f} MB"
-                      f"   ->  {ratio:,.0f}x less traffic")
+                      f"  ->  {ratio:,.0f}x less (constant factor; both O(N^2))")
         _ax.legend(loc="upper left", fontsize=8)
         _ax.grid(True, which="both", alpha=0.15)
         _fig.tight_layout()
@@ -481,7 +499,8 @@ def _(mo):
       per block would be wrong (the denominator isn't final) and wasteful.
     - **It's memory-bound-friendly by design.** $Q,K,V$ stream in coalesced passes and
       the working set fits SRAM, so you sit near the bandwidth roof (`0d`) instead of
-      drowning in $O(N^2)$ traffic. This is *the* kernel that made long context
+      drowning in the naive score-matrix round-trips — an order-of-magnitude constant
+      factor, plus an $O(N)$ footprint. This is *the* kernel that made long context
       practical.
     """)
     return

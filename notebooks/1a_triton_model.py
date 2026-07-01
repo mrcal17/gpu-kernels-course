@@ -222,9 +222,9 @@ def _(mo):
 
     - `x = tl.load(a_ptr + offs, mask=mask, other=0.0)` — gather `BLOCK_SIZE` elements
       into a register tile. Where `mask` is False, no DRAM access happens and `other`
-      fills the slot. Triton coalesces the contiguous `offs` into the fewest 128-byte
-      transactions (the `0c` story), so you get near-peak bandwidth *for free* when `offs`
-      is contiguous.
+      fills the slot. Triton coalesces the contiguous `offs` into the fewest memory
+      transactions — 32-byte sectors at L2/DRAM (the `0c` story; `1b` makes it precise) —
+      so you get near-peak bandwidth *for free* when `offs` is contiguous.
     - `tl.store(c_ptr + offs, x, mask=mask)` — scatter the tile back to DRAM, writing
       only masked-True lanes.
 
@@ -477,10 +477,15 @@ def _(mo):
     tutorial](https://triton-lang.org/main/getting-started/tutorials/01-vector-add.html)
     folds exactly this into its first kernel, and so do we. Two questions, two tools.
 
-    **Is it correct?** Compute the answer a trusted way (torch), then compare. Do **not** use
-    `==`: your kernel sums in a different order than torch, so results can differ in the last
-    bits and *still be correct*. Compare with a tolerance — and compute the reference
-    **first**, so a buggy in-place kernel can't overwrite your golden answer:
+    **Is it correct?** Compute the answer a trusted way (torch), then compare — with
+    `torch.testing.assert_close`, not `==`. For *this* kernel the comparison is the easy
+    case: an elementwise add does the same one rounding per element no matter how the work
+    is split, so your result should match torch **bit-for-bit** and you can demand zero
+    tolerance. The reason to build the `assert_close` habit now is the ops coming next:
+    reductions (`1c`) and matmul (`1e`) sum in a *different order* than torch, so their
+    results differ in the last bits and are still correct — there you'll loosen the
+    tolerance instead. Either way, compute the reference **first**, so a buggy in-place
+    kernel can't overwrite your golden answer:
 
     ```python
     ref = a + b                 # trusted answer, captured BEFORE your kernel runs
@@ -535,8 +540,8 @@ def _(mo):
       makes that correct. A missing mask is a silent out-of-bounds, the most common
       first-kernel bug.
     - **Keep `offs` contiguous.** Contiguous indices are what let `tl.load`/`tl.store`
-      coalesce into full 128-byte bursts — the bandwidth lesson from `0c`, now something
-      you control directly. `1b` makes this measurable.
+      coalesce into the fewest memory sectors — the bandwidth lesson from `0c`, now
+      something you control directly. `1b` makes this measurable.
     - **`BLOCK_SIZE` is a knob, not a law.** It's a `tl.constexpr` the compiler builds
       around; trying a few values is the seed of autotuning (`2a`). Correctness doesn't
       depend on it — the mask handles any size — but performance does.

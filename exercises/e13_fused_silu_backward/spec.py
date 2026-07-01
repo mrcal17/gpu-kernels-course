@@ -7,7 +7,9 @@ ENTRYPOINT = "silu_fwd_bwd"
 METRIC = "bandwidth"
 TOL = {"atol": 1e-5, "rtol": 1e-5}   # pure fp32 elementwise, no reduction
 
-N = 1 << 20   # 1,048,576 elements, a flat fp32 vector
+N = 1 << 24   # 16,777,216 elements (64 MB fp32), a flat vector -- big enough
+              # that kernel time dominates the autograd/dispatch overhead
+              # included in the timed silu_fwd_bwd call
 
 
 def make_inputs():
@@ -34,6 +36,6 @@ def reference(x):
 
 
 def bytes_moved(x):
-    # fused forward reads x + writes out (2*N); fused backward reads x + writes
-    # grad_input (2*N). Total 4*N elements. An unfused autograd chain moves more.
-    return 4 * x.numel() * x.element_size()
+    # fwd: read x, write out (2*N); bwd: read x, read grad_output, write
+    # grad_input (3*N). Total 5*N elements. An unfused autograd chain moves more.
+    return 5 * x.numel() * x.element_size()

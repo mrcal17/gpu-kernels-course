@@ -113,6 +113,9 @@ def _(mo):
     you see them on a log axis. The chart below puts the four levels on the same
     picture: **capacity** (how much fits) against **relative bandwidth** (how fast it
     streams). The on-chip levels are tiny but enormously fast; DRAM is vast but slow.
+    (The bandwidth ratios are order-of-magnitude estimates for this card, not measured
+    values — registers ~300×, shared/L1 ~25×, L2 ~6× DRAM. Note the step from shared
+    memory down to L2 is only ~4×; the big cliff is on-chip vs. DRAM.)
 
     The design lesson is right there in the gap: if you can shrink your working set so
     it lives in shared memory or L2 and reuse it many times, you trade a slow level for
@@ -131,8 +134,9 @@ def _():
         levels = ["Registers", "Shared/L1", "L2", "DRAM"]
         # Capacity in KB (whole-device for L2/DRAM, per-SM for regs/shared).
         capacity_kb = np.array([256, 100, 48 * 1024, 16 * 1024 * 1024], dtype=float)
-        # Relative bandwidth (DRAM = 1x); on-chip levels are vastly higher.
-        rel_bw = np.array([8000.0, 4000.0, 20.0, 1.0])
+        # Relative bandwidth (DRAM = 1x). Order-of-magnitude estimates for this
+        # card: regs ~300x, shared/L1 ~25x, L2 ~6x -- not measured values.
+        rel_bw = np.array([300.0, 25.0, 6.0, 1.0])
         colors = ["#4c9f70", "#5b8def", "#e0a458", "#d65f5f"]
 
         _fig, (_ax1, _ax2) = plt.subplots(1, 2, figsize=(9.5, 3.6))
@@ -146,7 +150,7 @@ def _():
         _ax2.barh(levels, rel_bw, color=colors)
         _ax2.set_xscale("log")
         _ax2.set_xlabel("relative bandwidth (DRAM = 1x, log scale)")
-        _ax2.set_title("Bandwidth: on-chip is orders faster")
+        _ax2.set_title("Bandwidth: on-chip is far faster")
         _ax2.invert_yaxis()
 
         _fig.suptitle("The same four levels, two opposing axes", y=1.02)
@@ -277,20 +281,21 @@ def _(mo):
 
     The 896 GB/s figure assumes the warp asks for memory the way the hardware likes.
     DRAM is not byte-addressable in practice — the memory system serves data in
-    aligned **transactions** (think 32- or 128-byte segments). When the 32 threads of a
-    warp read **32 consecutive, aligned** addresses, the hardware fuses them into one
-    (or a few) transactions: this is **coalescing**, and it delivers near-peak
-    bandwidth.
+    aligned **32-byte sectors** at L2/DRAM (the L1 cache line is 128 bytes; `1b` makes
+    the distinction precise). When the 32 threads of a warp read **32 consecutive,
+    aligned** addresses, the hardware fuses them into a handful of sectors: this is
+    **coalescing**, and it delivers near-peak bandwidth.
 
     When the warp's threads read **strided** or **scattered** addresses, each thread
-    pulls down a separate segment, most of which is thrown away. With stride $s$ you
-    fetch up to $s\times$ the bytes you use, so the *effective* bandwidth drops by
-    roughly $1/s$:
+    pulls down mostly-wasted sectors. With stride $s$ you fetch up to $s\times$ the
+    bytes you use, so the *effective* bandwidth drops by roughly $1/s$ — until every
+    lane occupies its own sector and the waste saturates. For float32 (4 bytes used
+    per 32-byte sector) that floor is $1/8$, reached at stride 8:
 
-    $$\text{effective BW} \approx \frac{\text{peak BW}}{s}
+    $$\text{effective BW} \approx \frac{\text{peak BW}}{\min(s,\, 8)}
       \quad (\text{ideal coalesced } s = 1).$$
 
-    The numpy simulation below doesn't measure a GPU — it *counts the 128-byte segments
+    The numpy simulation below doesn't measure a GPU — it *counts the 32-byte sectors
     a warp would touch* for a given stride, and reports the fraction of fetched bytes
     you actually use. That efficiency is the coalescing penalty, made visible.
 
@@ -307,28 +312,28 @@ def _():
 
         WARP = 32          # threads per warp
         DTYPE = 4          # float32 bytes
-        SEG = 128          # bytes per memory transaction (segment)
+        SEG = 32           # bytes per L2/DRAM sector
 
         def used_and_fetched(stride):
             # Addresses (in elements) the 32 lanes of a warp touch for this stride.
             lanes = np.arange(WARP) * stride
             byte_addrs = lanes * DTYPE
             used_bytes = WARP * DTYPE                       # what the warp actually wants
-            segments = np.unique(byte_addrs // SEG)         # distinct 128B segments hit
-            fetched_bytes = segments.size * SEG             # what DRAM must deliver
+            sectors = np.unique(byte_addrs // SEG)          # distinct 32B sectors hit
+            fetched_bytes = sectors.size * SEG              # what DRAM must deliver
             return used_bytes, fetched_bytes
 
         print("=== Coalescing: bytes used vs. bytes fetched (one warp) ===")
-        print(f"  warp={WARP} lanes, float32, {SEG}-byte segments\n")
-        print(f"  {'stride':>7s} {'segments':>9s} {'used B':>8s} {'fetched B':>10s} {'efficiency':>11s}")
+        print(f"  warp={WARP} lanes, float32, {SEG}-byte sectors\n")
+        print(f"  {'stride':>7s} {'sectors':>9s} {'used B':>8s} {'fetched B':>10s} {'efficiency':>11s}")
         print("  " + "-" * 50)
         for _s in [1, 2, 4, 8, 16, 32]:
             _used, _fetched = used_and_fetched(_s)
             _eff = _used / _fetched
-            _tag = "  <- coalesced" if _s == 1 else ""
+            _tag = "  <- coalesced" if _s == 1 else ("  <- the 1/8 floor" if _s >= 8 else "")
             print(f"  {_s:>7d} {_fetched // SEG:>9d} {_used:>8d} {_fetched:>10d} {_eff:>10.0%}{_tag}")
-        print("\n  stride 1: one tidy burst, ~100% of fetched bytes used.")
-        print("  big stride: many segments, most bytes wasted -> bandwidth collapses.")
+        print("\n  stride 1: a few tidy sectors, ~100% of fetched bytes used.")
+        print("  stride >= 8: every lane owns a whole sector -> waste saturates at 1/8 (fp32).")
 
     _run()
     return
@@ -341,8 +346,8 @@ def _(mo):
 
     Drag the stride. The bar shows the effective DRAM bandwidth a strided access
     pattern leaves on the table, starting from the 896 GB/s peak. Coalesced ($s=1$)
-    sits at the ceiling; every step in stride scatters the warp across more segments
-    and the usable bandwidth craters.
+    sits at the ceiling; every step in stride scatters the warp across more sectors
+    until the usable bandwidth bottoms out at the $1/8$ floor (~112 GB/s for fp32).
     """)
     return
 
@@ -363,7 +368,7 @@ def _(stride_slider):
 
         WARP = 32
         DTYPE = 4
-        SEG = 128
+        SEG = 32         # bytes per L2/DRAM sector
         PEAK_BW = 896.0  # GB/s
 
         def efficiency(stride):

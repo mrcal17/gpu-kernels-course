@@ -50,6 +50,8 @@ loop. Here it is for this kernel, to run yourself in a scratch script:
 ```python
 import torch, triton
 
+torch.manual_seed(0); a = torch.randn(512, 1024, device="cuda", dtype=torch.float16); b_f = torch.randn(1024, 768, device="cuda", dtype=torch.float32); scale = b_f.abs().amax(dim=0, keepdim=True) / 127.0; b_q = torch.clamp(torch.round(b_f / scale), -127, 127).to(torch.int8)   # as spec.py builds them
+
 ref = (a.float() @ (b_q.float() * scale)).to(torch.float16)   # dequant then matmul, FIRST
 out = quant_matmul(a, b_q, scale)                             # your kernel
 torch.testing.assert_close(out, ref, atol=1e-1, rtol=1e-2)   # fp16 round-off + accumulation order

@@ -147,7 +147,7 @@ def _(mo):
     ```cpp
     int i = blockIdx.x * blockDim.x + threadIdx.x;
     if (i < n) {                       // CUDA's version of Triton's `mask = offs < n`
-        out[i] = a[i] + b[i];
+        out[i] = ...;                  // combine the two loads — this line is c01's job
     }
     ```
 

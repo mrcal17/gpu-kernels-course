@@ -97,7 +97,9 @@ static int run_size(int N, std::vector<float>& C_out) {
     CUDA_CHECK(cudaMalloc(&d_C, bytes));
     CUDA_CHECK(cudaMemcpy(d_A, A.data(), bytes, cudaMemcpyHostToDevice));
     CUDA_CHECK(cudaMemcpy(d_B, B.data(), bytes, cudaMemcpyHostToDevice));
-    CUDA_CHECK(cudaMemset(d_C, 0, bytes));
+    // Poison C with 0xFF (NaN-ish float garbage) instead of zeros so a kernel
+    // that accumulates into C or relies on a pre-zeroed C fails loudly.
+    CUDA_CHECK(cudaMemset(d_C, 0xFF, bytes));
 
     int rc = solve(d_A, d_B, d_C, N);
 

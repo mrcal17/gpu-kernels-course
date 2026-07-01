@@ -60,5 +60,14 @@ python -m harness.runner c01 --watch
 **Requires** the CUDA Toolkit (`nvcc`) and, on Windows, MSVC (VS Build Tools) — the
 runner locates `vcvars64.bat` automatically (override with the `VCVARS` env var).
 
+## Capstone (Part 4)
+The final exercise, [`capstone/`](capstone/), inverts the format: **you** write the
+`spec.py` contract (op, shapes, metric, tolerance — that's milestone M0 of lecture
+`4b`), then the kernel. It ships as a runnable template:
+
+```bash
+python -m harness.runner capstone --watch
+```
+
 > Stuck? The matching lecture has the concept; the README has layered hints. Resist the
 > urge to look anything up until you've tried — the point is to build the muscle.

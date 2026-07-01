@@ -51,8 +51,9 @@ real kernel you'll get `[PASS] correct` / `[FAIL] ...` and a `[PERF]` line.
    loads or the barriers. (This is exactly what the `N = 257` size is testing.)
 
 ## Validate & benchmark it yourself
-Timing is the same device-event pattern as `c01` (warm up, bracket many `solve()` launches in
-a `cudaEventRecord` pair, then `cudaEventElapsedTime / iters`). What changes per kernel is the
+Timing still uses CUDA device events with a warm-up first, but unlike `c01` each `solve()`
+launch is bracketed and timed individually and the harness reports the **median** across
+launches (robust to outliers like a stray clock ramp). What changes per kernel is the
 **reference**, the **tolerance**, and the **throughput formula**:
 
 - **Correctness:** compute a host reference with a triple-nested loop

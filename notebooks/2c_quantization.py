@@ -442,7 +442,7 @@ def _(mo):
     ## Why this matters for the kernels you'll write
 
     - **Quantized matmul is a bandwidth play.** The flops barely change; you move a
-      quarter (int8) or eighth (fp8/int4) of the bytes. On the roofline that lifts a
+      quarter (int8/fp8 — both are 8 bits) or an eighth (int4) of the bytes. On the roofline that lifts a
       memory-bound GEMM up its slanted roof — which is why your QLoRA model both fits
       *and* runs faster.
     - **Dequantize in the kernel, accumulate wide.** Read low precision, expand a tile

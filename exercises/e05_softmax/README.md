@@ -37,6 +37,8 @@ loop. Here it is for this kernel, to run yourself in a scratch script:
 ```python
 import torch, triton
 
+torch.manual_seed(0); x = torch.randn(4096, 2048, device="cuda", dtype=torch.float32) * 10.0   # as spec.py builds it
+
 ref = torch.softmax(x, dim=1)               # reference FIRST (torch)
 out = softmax(x)                            # your kernel
 torch.testing.assert_close(out, ref, atol=1e-4, rtol=1e-4)   # exp + normalize over a row; tight but nonzero

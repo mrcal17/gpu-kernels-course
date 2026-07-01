@@ -33,6 +33,8 @@ loop. Here it is for this kernel, to run yourself in a scratch script:
 import torch, triton
 import torch.nn.functional as F
 
+torch.manual_seed(0); x = torch.randn(4096, 2048, device="cuda", dtype=torch.float32); weight = torch.randn(2048, device="cuda", dtype=torch.float32); bias = torch.randn(2048, device="cuda", dtype=torch.float32)   # as spec.py builds them
+
 ref = F.layer_norm(x, (x.shape[1],), weight, bias, eps=1e-5)   # reference FIRST (torch)
 out = layernorm(x, weight, bias)                               # your kernel
 torch.testing.assert_close(out, ref, atol=1e-2, rtol=1e-3)   # per-row mean/var reorder sums

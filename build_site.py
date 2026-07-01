@@ -28,7 +28,8 @@ def dedupe_assets() -> None:
     """Collapse every per-notebook docs/<module>/assets/ into one shared docs/assets/.
 
     marimo's html-wasm export copies the full (content-hashed) asset bundle into
-    each notebook's folder -- ~25 MB x 26 notebooks. The filenames are content
+    each notebook's folder -- ~25 MB x 27 exported files (26 lectures + home).
+    The filenames are content
     hashes, so identical names are identical files; we keep one copy in
     docs/assets/ and rewrite each module's index.html (./assets/ -> ../assets/).
     home (docs/index.html) already sits next to docs/assets/, so it is left alone.

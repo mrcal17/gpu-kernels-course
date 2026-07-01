@@ -1,7 +1,7 @@
-# Deps for the EXERCISE harness (real GPU). Already installed on this machine:
-#   torch 2.10.0+cu128, triton 3.6.0, CUDA Toolkit 13.1 (nvcc on PATH).
-# Listed for reproducibility on another box. Install torch from the CUDA index
-# matching your toolkit (see pytorch.org), then:
+# Deps for the EXERCISE harness (real GPU). Tested with:
+#   torch 2.10.0+cu128, triton 3.6.0, CUDA Toolkit 13.1 (nvcc on PATH),
+#   on an RTX 5070 Ti (Blackwell, sm_120).
+# Install torch from the CUDA index matching your toolkit (see pytorch.org), then:
 torch          # CUDA build (cu12x)
 triton         # ships with torch on Linux; Windows: triton-windows
 numpy

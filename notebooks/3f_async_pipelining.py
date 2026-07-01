@@ -97,19 +97,19 @@ def _(mo):
     word — **without blocking the issuing thread**. The thread fires the copy and keeps
     going; the bytes arrive later, and a separate *commit/wait* mechanism tells you when.
 
-    In CUDA C++ you reach it through the pipeline primitives in `<cuda/pipeline>` (or the
-    lower-level `__pipeline_*` intrinsics):
+    In CUDA C++ you reach it through the `__pipeline_*` intrinsics from
+    `<cuda_pipeline.h>` (or the higher-level `cuda::pipeline` API in `<cuda/pipeline>`):
 
     ```cuda
-    #include <cuda/pipeline>
-    #include <cooperative_groups.h>
+    #include <cuda_pipeline.h>
 
     // fire an async copy of one element global -> shared (does NOT block):
     __pipeline_memcpy_async(&As[ty][tx], &A[row * K + (k + tx)], sizeof(float));
     __pipeline_commit();          // group the copies issued so far into a "stage"
 
     // ... later, when you actually need that tile ...
-    __pipeline_wait_prior(0);     // block until the oldest outstanding stage lands
+    __pipeline_wait_prior(0);     // wait until at most 0 stages remain in flight,
+                                  // i.e. block until ALL committed copies have landed
     __syncthreads();              // then the usual barrier before reading shared
     ```
 
@@ -159,6 +159,8 @@ def _(mo):
         __pipeline_wait_prior(/*keep 1 stage in flight=*/1);
         __syncthreads();
         compute_tile(As[buf], Bs[buf]);   // overlaps with the copy above
+        __syncthreads();                   // ALL warps done with As[buf]/Bs[buf]
+                                           // before anyone refills them
 
         buf ^= 1;                          // ping-pong
     }
@@ -172,6 +174,16 @@ def _(mo):
       with the compute on the current buffer.
     - `__pipeline_wait_prior(1)` keeps **one** copy outstanding (the depth-2 pipeline),
       rather than draining everything.
+    - **The tail barrier after `compute_tile` is non-negotiable.** Look at which buffer
+      the *next* iteration's `load_async` targets: after `buf ^= 1` it issues into
+      `As[buf ^ 1]` — exactly the buffer this iteration just computed on. An async copy's
+      writes can land at *any* moment between issue and the corresponding wait, and the
+      barrier before the compute only guarantees the current tile is ready to *read* —
+      it says nothing about whether a lagging warp is still reading the buffer a fast
+      warp's fresh `cp.async` is about to scribble over. Without the trailing
+      `__syncthreads()`, that write-after-read race silently corrupts tiles. This is
+      `3b`'s "barrier (2) is non-negotiable" all over again — same hazard, except now
+      the clobbering writer is the async copy engine instead of a thread.
 
     With one extra buffer the per-iteration cost collapses from $t_L + t_C$ toward
     $\max(t_L, t_C)$. The cost is **2× the shared memory** for the tiles — and recall

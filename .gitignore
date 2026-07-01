@@ -14,3 +14,6 @@ build/
 # editor
 .vscode/
 .idea/
+
+# personal worked solutions -- never commit (course rule: no worked kernels in the repo)
+solutions/

@@ -15,12 +15,12 @@ Two tracks, by design:
 
 ## Quick start
 ```bash
-# 1. see your GPU's real limits
-python -m harness.device_info
-
-# 2. read a lecture
+# 1. install the lecture deps and read a lecture
 pip install -r requirements.txt          # marimo, numpy, scipy, matplotlib
 marimo edit notebooks/0a_orientation.py  # or  ./launch.ps1 0a
+
+# 2. see your GPU's real limits (needs the exercise stack -- see Requirements)
+python -m harness.device_info
 
 # 3. write your first kernel (needs torch + triton)
 python -m harness.runner e01 --watch
@@ -35,11 +35,12 @@ python -m harness.runner e01 --watch
 | `SEGMENTATION.md` | the full course plan / syllabus / dependency graph |
 | `CLAUDE.md` | authoring & build conventions |
 | `build_site.py` | export the lectures to a WASM site in `docs/` (GitHub Pages) |
+| `reviews/` | the adversarial review passes the course has been through |
 
 ## Requirements
 - **Lectures / site:** `requirements.txt` (marimo + numpy/scipy/matplotlib — pyodide-safe).
-- **Exercises:** a CUDA-enabled **PyTorch** + **Triton** (already installed here:
-  torch 2.10 cu128, triton 3.6). Part 3 also needs the **CUDA Toolkit** (`nvcc`) and,
+- **Exercises:** a CUDA-enabled **PyTorch** + **Triton** (tested with torch 2.10 cu128 +
+  triton 3.6 on an RTX 5070 Ti). Part 3 also needs the **CUDA Toolkit** (`nvcc`) and,
   on Windows, an MSVC host compiler. See `requirements-exercises.txt`.
 
 Start at [`notebooks/home.py`](notebooks/home.py) or just run `./launch.ps1`.

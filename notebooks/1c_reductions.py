@@ -281,13 +281,15 @@ def _(mo):
     ```python
     @triton.jit
     def row_sum_kernel(x_ptr, out_ptr, n_cols, stride_row, BLOCK_SIZE: tl.constexpr):
-        row = tl.program_id(0)                       # one program per row
-        offs = tl.arange(0, BLOCK_SIZE)              # lanes along the row
-        mask = offs < n_cols                         # guard the ragged row tail
-        x = tl.load(x_ptr + row * stride_row + offs, # row start via its stride, never n_cols
-                    mask=mask, other=0.0)            # other=0.0 is the SUM identity
-        # row_total = tl.sum(x, axis=0)              # <- the reduction (you write it)
-        # tl.store(out_ptr + row, row_total)
+        row = tl.program_id(0)     # one program per row
+        # 1. build this row's lane offsets and a tail mask
+        #    (address the row via its stride, not its width — see below)
+        ...
+        # 2. load the tile (masked) — think hard about what value the
+        #    masked-off lanes must contribute to a SUM
+        ...
+        # 3. reduce along the lane axis; store one scalar for this row
+        ...
     ```
 
     The single most important detail is the **`other` value: it must be the identity of
@@ -371,13 +373,23 @@ def _(mo):
     naive serial sum — a rare case where the parallel-friendly algorithm is also the
     numerically nicer one.
 
-    **(c) Overflow and the max-shift trick.** Summing squares ($\sum x_i^2$, for an L2
-    norm) or exponentials ($\sum e^{x_i}$, for softmax) can overflow float32. The standard
-    guard is to **reduce for the max first, subtract it, then reduce the sum** — so the
-    largest term becomes $e^0 = 1$ and nothing overflows. That "max-reduce, then
-    shifted-sum-reduce" is precisely the structure of softmax, which is why `1d` is the
-    direct sequel to this lecture. Hold the pattern: *a reduction for the shift, then a
-    reduction for the total.*
+    **(c) Overflow and the max-first guard.** Summing squares ($\sum x_i^2$, for an L2
+    norm) or exponentials ($\sum e^{x_i}$, for softmax) can overflow float32. In both
+    cases the guard starts the same way — **reduce for the max first** — but what you do
+    with it differs, and mixing the two up computes the wrong answer:
+
+    - **Exponentials: subtract.** $e^{x_i - m} = e^{x_i} e^{-m}$, so the constant
+      $e^{-m}$ factors out of the sum *exactly* — subtracting the max just rescales, the
+      largest term becomes $e^0 = 1$, and nothing overflows.
+    - **Squares: scale, don't subtract.** $\sum (x_i - m)^2$ is a *different quantity*
+      than $\sum x_i^2$ — nothing factors out of a square the way it does out of an
+      exponential. The guard is division: $\sum x_i^2 = m^2 \sum (x_i/m)^2$ with
+      $m = \max_i |x_i|$, so every ratio is in $[-1, 1]$, the sum stays bounded, and you
+      multiply the $m^2$ back at the end.
+
+    The exponential version — "max-reduce, then shifted-sum-reduce" — is precisely the
+    structure of softmax, which is why `1d` is the direct sequel to this lecture. Hold
+    the pattern: *a reduction for the guard, then a reduction for the total.*
 
     The cell below shows order-dependence and the accuracy gap on a deliberately nasty sum.
     """)
@@ -440,8 +452,10 @@ def _(mo):
       Row reduce (`e04`) is the lucky case where one-program-per-row needs no combine at
       all — start there.
     - **Expect last-bit differences, guard overflow.** Float sums depend on order, so
-      compare against a tolerance, not for equality. When you sum squares or exponentials,
-      do a max-reduce first and shift — the trick that becomes softmax.
+      compare against a tolerance, not for equality. When you sum exponentials, max-reduce
+      first and **subtract** ($e^{-m}$ factors out exactly — the trick that becomes
+      softmax); when you sum squares, max-reduce first and **scale**
+      ($\sum x^2 = m^2 \sum (x/m)^2$) — subtraction is only exact for exponentials.
 
     Reductions plus maps are the two atoms of Part 1. Softmax (`1d`) is your first kernel
     that *fuses* them: a max-reduce, a shifted exp-map, a sum-reduce, and a normalize —

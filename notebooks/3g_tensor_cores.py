@@ -29,8 +29,10 @@ def _(mo):
     ~tens-of-TFLOP/s FP32 ceiling (`0d`) is built. But a modern GPU has a *second* set of
     math units that do not appear in that number at all: **tensor cores**, units that
     perform an entire small **matrix-multiply-accumulate** (MMA) per instruction. They are
-    why the GPU's *real* peak for ML — in fp16/bf16/fp8/fp4 — is an order of magnitude
-    above the FP32 CUDA-core figure.
+    why the GPU's *real* peak for ML — in fp16/bf16/fp8/fp4 — sits well above the FP32
+    CUDA-core figure: on your 5070 Ti, roughly **~4× for dense fp16/bf16** (~176 vs ~44
+    TFLOP/s), **~8× for fp8**, and **~16× for fp4**; datacenter parts (and sparsity)
+    stretch the ratios further still.
 
     This lecture is the *what* and the *why*, not a full hand-written kernel: what a
     tensor core computes, the **WMMA** API you reach it through from CUDA C++, the dtypes
@@ -153,7 +155,7 @@ def _(mo):
     | **bf16** | 16 | Ampere | same 8-bit exponent as fp32 → friendlier dynamic range |
     | **tf32** | 19 (stored as 32) | Ampere | a "drop-in" for fp32 matmul: 10-bit mantissa, ~free accuracy hit |
     | **int8** | 8 | Turing | quantized inference (`2c`), int32 accumulate |
-    | **fp8** (e4m3 / e5m2) | 8 | Hopper | training/inference at 8-bit float |
+    | **fp8** (e4m3 / e5m2) | 8 | Ada / Hopper | training/inference at 8-bit float |
     | **fp4** (e2m1) | 4 | **Blackwell** | new on your card — covered in `4a` |
 
     The rule of thumb: **halving the input bit-width roughly doubles tensor-core
@@ -175,11 +177,13 @@ def _(mo):
     ### Throughput by dtype (illustrative)
 
     The bars below sketch the relative matmul throughput of CUDA cores vs tensor cores
-    across the dtype ladder. The numbers are **illustrative multipliers**, not measured
-    5070 Ti figures (real peaks are measured in the capstone) — the *shape* is the point:
-    a big jump from CUDA cores to tensor cores, then a steady ~2× per halving of input
-    precision. Use the dropdown to highlight a dtype and read its multiplier over the
-    FP32 CUDA-core baseline.
+    across the dtype ladder. The multipliers are **illustrative, datacenter-class
+    figures — NOT your card's**. On consumer GeForce parts the dense ratios are much
+    smaller: on your 5070 Ti, fp16 tensor is **~4×** the fp32 CUDA-core rate (~176 vs
+    ~44 TFLOP/s), fp8 **~8×**, and only fp4 reaches **~16×** (real peaks are measured
+    in the capstone). What carries over is the *shape*: a big jump from CUDA cores to
+    tensor cores, then a steady ~2× per halving of input precision. Use the dropdown to
+    highlight a dtype and read its multiplier over the FP32 CUDA-core baseline.
     """)
     return
 
@@ -199,8 +203,9 @@ def _(dtype_dropdown):
     def _run():
         import matplotlib.pyplot as plt
 
-        # Illustrative throughput multipliers vs FP32 CUDA-core baseline (=1).
-        # NOT measured 5070 Ti peaks — relative shape only.
+        # Illustrative DATACENTER-CLASS multipliers vs FP32 CUDA-core baseline (=1).
+        # NOT 5070 Ti peaks (consumer dense ratios are ~4x fp16 / ~8x fp8 /
+        # ~16x fp4) — relative shape only.
         data = [
             ("fp32 (CUDA core)", 1.0,  "#9aa7c7"),
             ("tf32",             8.0,  "#5b8def"),
@@ -226,7 +231,8 @@ def _(dtype_dropdown):
         _ax.set_ylabel("matmul throughput vs FP32 CUDA core (x, log2)")
         _ax.set_title(
             f"tensor cores vs CUDA cores — '{sel}' = "
-            f"{dict((d[0], d[1]) for d in data)[sel]:.0f}x (illustrative)")
+            f"{dict((d[0], d[1]) for d in data)[sel]:.0f}x "
+            f"(illustrative, datacenter-class — see note above)")
         _ax.tick_params(axis="x", labelrotation=15)
         _ax.grid(True, axis="y", which="both", alpha=0.15)
         _fig.tight_layout()
@@ -338,8 +344,9 @@ def _(mo):
 
     WMMA is the *friendly* face of tensor cores. One level down is the raw PTX
     instruction the compiler emits — `mma.sync` (and the warpgroup-wide `wgmma`
-    on Hopper, the Tensor-Memory-based `tcgen05` family on Blackwell). A single
-    `mma.sync` looks like:
+    on Hopper, the Tensor-Memory-based `tcgen05` family on *datacenter* Blackwell,
+    `sm_100` — consumer Blackwell like your `sm_120` sticks with conventional
+    `mma.sync`). A single `mma.sync` looks like:
 
     ```ptx
     // m16n8k16, fp16 inputs, fp32 accumulate — one warp-wide tile-MMA

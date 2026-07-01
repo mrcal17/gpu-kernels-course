@@ -33,6 +33,8 @@ loop. Here it is for this kernel, to run yourself in a scratch script:
 ```python
 import torch, triton
 
+torch.manual_seed(0); x = torch.randn(1 << 24, device="cuda", dtype=torch.float32)   # as spec.py builds it
+
 ref = x * torch.sigmoid(x)                  # reference FIRST (torch)
 out = silu(x)                               # your kernel
 torch.testing.assert_close(out, ref, atol=1e-3, rtol=1e-3)   # a couple of ops -> mild rounding

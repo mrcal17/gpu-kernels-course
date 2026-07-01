@@ -92,22 +92,26 @@ def _(mo):
     > Lane $i$ receives the `val` held by lane $i + \texttt{delta}$. Lanes near the top
     > (where $i+\texttt{delta} \ge 32$) keep their own `val` unchanged.
 
-    This is exactly the data movement a tree reduction needs. To sum 32 lanes, you halve
-    the active span each step — `delta = 16, 8, 4, 2, 1` — adding in the value from the
-    lane `delta` above:
+    This is exactly the data movement a tree reduction needs. To sum 32 lanes, you run a
+    short sequence of folding steps, each one adding in the value from a lane `delta`
+    above — the crux of `c03` is choosing those `delta`s:
 
     ```cpp
-    // sum across a full warp, leaving the total in lane 0
-    for (int delta = 16; delta > 0; delta >>= 1)
-        val += __shfl_down_sync(FULL, val, delta);
-    // now lane 0 holds the sum of all 32 lanes
+    // sum across a full warp with a tree of __shfl_down_sync folds
+    for (int delta = /* ...? */; delta > 0; /* ...? */) {
+        // each step folds the top half of the surviving lanes onto the
+        // bottom half, one  val += __shfl_down_sync(FULL, val, delta)  at
+        // a time. Work out the delta sequence — and which lane ends up
+        // holding the total. That derivation is c03's job.
+        ...
+    }
     ```
 
-    Trace it: step 1 (`delta=16`) folds the top half into the bottom 16 lanes; step 2
-    (`delta=8`) folds 16 into 8; and so on down to lane 0. **Five steps** ($\log_2 32$)
-    collapse 32 values to one — the same tree depth as `1c`'s reduction, but with *no*
-    shared-memory traffic and *no* `__syncthreads()`. Each step is one instruction per
-    lane.
+    Trace it on the diagram below: each step folds the surviving upper lanes onto the
+    lower ones, shrinking the live span until a single lane holds everything.
+    **Five steps** ($\log_2 32$) collapse 32 values to one — the same tree depth as
+    `1c`'s reduction, but with *no* shared-memory traffic and *no* `__syncthreads()`.
+    Each step is one instruction per lane.
 
     This is the CUDA-level realization of the reduction pattern from `1c`: same
     $\log_2 N$ tree, executed at the warp level in registers instead of through shared
@@ -208,12 +212,16 @@ def _(mo):
     > Lane $i$ exchanges with lane $i \oplus \texttt{laneMask}$ (bitwise XOR). The pattern
     > is symmetric — both partners swap — so it's a *butterfly* network.
 
-    Run it with `laneMask = 16, 8, 4, 2, 1` and **every** lane accumulates the warp total:
+    Run the same halving tree with XOR partners and **every** lane accumulates the warp
+    total:
 
     ```cpp
     // all-reduce sum across a warp: every lane ends with the total
-    for (int m = 16; m > 0; m >>= 1)
-        val += __shfl_xor_sync(FULL, val, m);
+    for (/* the same halving tree as the down-shuffle version */) {
+        // val += __shfl_xor_sync(FULL, val, m);  — same laneMask sequence
+        // you derive for c03; only the partner pattern changes
+        ...
+    }
     // now ALL 32 lanes hold the sum
     ```
 
@@ -254,19 +262,33 @@ def _(mo):
     compaction** (each lane finds its output slot by counting set bits below it) and
     histogram-style kernels.
 
-    **`__activemask()`** returns the set of lanes currently active at this point — useful
-    as the participation mask when a branch has already split the warp and you don't
-    statically know who's present:
+    **`__activemask()`** returns the set of lanes currently active at this exact point.
+    It is tempting to use it as the participation mask after a divergent branch —
+    **don't**. NVIDIA documents that as an anti-pattern: `__activemask()` merely
+    *reports* which lanes happen to be executing right now, with **no guarantee that
+    those lanes are converged** — the scheduler is free to have lanes on the same path
+    arrive at the intrinsic separately, in which case two "participants" can compute
+    *different* masks and the exchange is broken. Treat it as a **diagnostic** (log or
+    assert who's present), never as the fix.
+
+    The correct tool is the one you just met: **derive the membership mask from the
+    branch condition itself** with `__ballot_sync`, taken *before* the divergent region
+    while the full warp is still converged, and pass *that* mask to the shuffle:
 
     ```cpp
-    unsigned active = __activemask();                 // lanes live right here
-    val += __shfl_down_sync(active, val, delta);      // shuffle only among them
+    unsigned mask = __ballot_sync(0xffffffff, cond);  // who will take the branch —
+                                                      // computed while all 32 agree
+    if (cond) {
+        // every lane named in `mask` is here, and all of them execute this:
+        val += __shfl_down_sync(mask, val, delta);
+    }
     ```
 
     The caution from §1 applies doubly: an intrinsic's mask must name *exactly* the lanes
     that will execute it. Using a stale `FULL` mask after a divergent branch — when some
-    lanes have peeled off — is undefined behavior. `__activemask()` is how you get an
-    honest mask in divergent code.
+    lanes have peeled off — is undefined behavior; so is guessing the mask with
+    `__activemask()`. Compute the mask from the condition, and the mask and the control
+    flow cannot disagree.
 
     > [CUDA C++ Programming Guide §7.21, "Warp Vote Functions"](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#warp-vote-functions)
     > covers `__ballot_sync`/`__all_sync`/`__any_sync`; `__activemask()` is in §7.24.
@@ -401,8 +423,9 @@ def _(mo):
       `__syncthreads()` (`3b`). Within a warp: shuffles. The tail of every reduction
       belongs to the shuffles — fewer instructions, no banks, no barrier.
     - **Mind the mask.** Every lane in the participation mask must execute the intrinsic;
-      use `__activemask()` after divergence. It's the warp-level version of the
-      all-threads-hit-the-barrier rule.
+      around divergence, derive the mask from the branch condition with `__ballot_sync`
+      (`__activemask()` is a diagnostic, not a participation mask). It's the warp-level
+      version of the all-threads-hit-the-barrier rule.
     - **Votes are reductions too.** `__ballot_sync` + `__popc` count predicates
       across a warp in two instructions — the basis of compaction and histograms.
     """)

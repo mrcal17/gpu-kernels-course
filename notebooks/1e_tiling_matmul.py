@@ -350,11 +350,24 @@ def _(mo):
     memory-bound to **compute-bound** — the regime where tensor cores and lower
     precision (Parts 2–3) become the levers that matter.
 
-    Bigger tiles → more reuse → higher intensity → faster. The only thing stopping you
-    from $T = \infty$ is that the A tile, B tile, and accumulator must *fit* in SRAM and
-    registers — which is exactly the **occupancy** budget from `0d`. Tiling is the trade:
-    spend on-chip memory to buy arithmetic intensity. The interactive below makes this
-    concrete.
+    Bigger tiles → more reuse → higher intensity → faster. The brake on $T = \infty$ is
+    that the staged tiles and the accumulator must *fit* in SRAM and registers — the
+    **occupancy** budget from `0d`. But note carefully what that budget does and doesn't
+    constrain. The square-cubic tile ($\text{BLOCK\_M}=\text{BLOCK\_N}=\text{BLOCK\_K}=T$)
+    is a **counting device** for the intensity argument, not the shape of a real kernel —
+    and intensity only depends on the **output tile**: in the general rectangular count,
+    $\text{BLOCK\_K}$ cancels out of $I$ entirely (each K-step loads
+    $\text{BLOCK\_K}(T_m + T_n)$ elements and does $2\,T_m T_n \text{BLOCK\_K}$ FLOPs —
+    the $\text{BLOCK\_K}$ divides away). So a real kernel takes a *large output tile* and
+    streams K through it in *thin slices*: a ridge-crossing $196\times196$ output tile
+    ($I \approx 49$) with $\text{BLOCK\_K}=32$ stages only
+    $2 \times 196 \times 32 \times 4 \approx 50$ KB per K-step — comfortably inside the
+    100 KB/SM budget. Add the L2 reuse between neighboring tiles (the tutorial's
+    "group-major" ordering) and real fp32 matmuls on this card genuinely **are
+    compute-bound**: cuBLAS SGEMM sustains a large fraction of the ~44 TFLOP/s roof.
+    Tiling is still the trade — spend on-chip memory to buy arithmetic intensity — you
+    just spend it on the output tile, not on $\text{BLOCK\_K}$. The interactive below
+    makes the counting model concrete.
 
     > Simon Boehm's
     > ["How to optimize a CUDA matmul kernel for cuBLAS-like performance"](https://siboehm.com/articles/22/CUDA-MMM)
@@ -473,11 +486,16 @@ def _(mo):
     general rectangular form, when you allow $\text{BLOCK\_M}$ and $\text{BLOCK\_N}$ to
     differ, is the harmonic-mean expression $I \approx \tfrac{2}{1/T_m +
     1/T_n}$ FLOP/element — for square tiles $T_m = T_n = T$ that is $T$ FLOP/element, and
-    dividing by 4 bytes (fp32) gives $T/4$ FLOP/byte.) Drag $T$ from tiny to large and watch the dot climb the memory
-    roof toward the ridge. At the slider's max ($T=128 \Rightarrow I=32$) you're a $128\times$
-    above naive but still short of the ridge ($I\approx49$) — tiles bigger than SRAM can
-    hold would carry you across into the compute-bound regime. The whole optimization story
-    is in that one sliding dot.
+    dividing by 4 bytes (fp32) gives $T/4$ FLOP/byte. Notice $\text{BLOCK\_K}$ appears in
+    neither form.) Drag $T$ from tiny to large and watch the dot climb the memory roof
+    toward the ridge. At the slider's max ($T=128 \Rightarrow I=32$) you're a $128\times$
+    above naive but still short of the ridge ($I\approx49$) — and mind the shaded zone:
+    a *cubic* $T=128$ tile would stage $2T^2 \times 4 = 128$ KB per K-step, already past
+    the 100 KB/SM budget. That wall is an artifact of the cubic counting model, **not** a
+    law that matmul can't cross the ridge. Since $I$ ignores $\text{BLOCK\_K}$, real
+    kernels cross with big *output* tiles and thin K-slices (plus L2 reuse) — which is
+    exactly how cuBLAS runs fp32 matmul compute-bound on this card. The whole
+    optimization story is in that one sliding dot.
     """)
     return
 
@@ -500,6 +518,7 @@ def _(tile_slider):
         _B = 896e9              # bytes/s  (5070 Ti DRAM bandwidth)
         _P_PEAK = 44e12         # FLOP/s   (illustrative FP32 peak, matches 0d)
         _I_ridge = _P_PEAK / _B
+        _SMEM = 100e3           # bytes of shared memory per SM (5070 Ti)
 
         _T = int(tile_slider.value)
         # square-tile intensity derived in section 4:  I = T / 4  (fp32)
@@ -508,6 +527,13 @@ def _(tile_slider):
         _perf = min(_P_PEAK, _B * _I_tiled)
         _regime = "memory-bound" if _I_tiled < _I_ridge else "compute-bound"
         _frac_peak = _perf / _P_PEAK
+
+        # Cubic-tile staging cost per K-step: two T x T fp32 tiles = 8*T^2 bytes.
+        # Beyond _T_fit the CUBIC counting model stops being launchable as-is —
+        # real kernels sidestep this with rectangular tiles + thin BLOCK_K.
+        _stage_bytes = 8.0 * _T * _T
+        _T_fit = (_SMEM / 8.0) ** 0.5          # ~112 for 100 KB
+        _fits = _stage_bytes <= _SMEM
 
         _I = np.logspace(-2, 3, 400)
         _roof = np.minimum(_P_PEAK, _B * _I)
@@ -523,14 +549,25 @@ def _(tile_slider):
                      label="naive  I = 1/4")
         _ax1.axhline(_I_ridge, color="#999", linestyle=":", linewidth=1.2,
                      label=f"ridge  I = {_I_ridge:.0f}")
+        # shade where a CUBIC T x T x T tile's per-step staging (8*T^2 B)
+        # exceeds the 100 KB/SM shared-memory budget
+        _ax1.axvspan(_T_fit, 130, color="#d65f5f", alpha=0.08)
+        _ax1.axvline(_T_fit, color="#d65f5f", linestyle="--", linewidth=1.0,
+                     alpha=0.6)
+        _ax1.text(_T_fit + 1.5, 1.0, "cubic tile\n> 100 KB/SM",
+                  color="#b03a3a", fontsize=7)
         _ax1.axvline(_T, color="#333", linestyle="-", linewidth=0.8, alpha=0.5)
         _ax1.scatter([_T], [_I_tiled], color="#4c9f70", s=80, zorder=5)
         _ax1.set_xlabel("tile side T")
         _ax1.set_ylabel("arithmetic intensity I (FLOP/byte)")
+        _fit_note = "" if _fits else "  [cubic tile won't fit!]"
         _ax1.set_title(f"T={_T}  ->  I = {_I_tiled:.1f}  "
-                       f"({_I_tiled / _I_naive:.0f}x naive)")
+                       f"({_I_tiled / _I_naive:.0f}x naive), "
+                       f"stages {_stage_bytes / 1e3:.0f} KB/step{_fit_note}",
+                       fontsize=9)
         _ax1.legend(fontsize=8, loc="upper left")
         _ax1.grid(True, alpha=0.15)
+        _ax1.set_xlim(0, 132)
 
         # --- right: the 0d roofline with the current tile's dot on it
         _ax2.plot(_I, _roof, color="#333", linewidth=2.2, zorder=3)

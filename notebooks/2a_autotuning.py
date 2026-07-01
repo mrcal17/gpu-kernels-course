@@ -163,7 +163,8 @@ def _(mo):
     With masking in place, you hand Triton a **list of `Config`s** and the
     **argument names that change the problem size** (`key`). On the first call for a
     new key, Triton benchmarks every config, caches the winner against that key, and
-    reuses it forever after. Subsequent calls with the same key pay nothing.
+    reuses it from then on (per process — the cache is in-memory, so a fresh process
+    re-tunes). Subsequent calls with the same key pay nothing.
 
     ```python
     import triton
@@ -189,6 +190,21 @@ def _(mo):
         ...
     ```
 
+    One launch-side consequence: under `@triton.autotune`, `BLOCK_M`/`BLOCK_N`
+    aren't known at the call site — the autotuner picks them per key, at runtime —
+    so a static grid tuple like `(triton.cdiv(M, BLOCK_M) * ..., )` can't even be
+    written. Instead you pass a **callable** that Triton invokes with the winning
+    config's meta-parameters:
+
+    ```python
+    grid = lambda meta: (triton.cdiv(M, meta['BLOCK_M']) * triton.cdiv(N, meta['BLOCK_N']),)
+    matmul_kernel[grid](a, b, c, M, N, K, ...)
+    ```
+
+    Triton calls `grid(meta)` *after* choosing the config, so the grid always
+    matches the tile shape that actually got compiled. This callable-grid form is
+    the course-wide convention for every autotuned kernel — `e10` assumes it.
+
     Four knobs live in a `Config`:
 
     - **`BLOCK_M / BLOCK_N / BLOCK_K`** — the tile shape from §1. These are
@@ -205,8 +221,10 @@ def _(mo):
 
     > [`triton.autotune` reference](https://triton-lang.org/main/python-api/generated/triton.autotune.html).
     > Note: because tuning runs on the *first* call per key, it shows up as a
-    > one-time latency spike, and `key` should list everything that changes the
-    > optimal config.
+    > one-time latency spike. `key` takes *argument names* whose **values** change
+    > the optimal config (like `M, N, K`); you can't list dtype there, and you don't
+    > need to — Triton automatically folds the dtypes of tensor arguments into the
+    > cache key, so a dtype change re-tunes on its own.
     """)
     return
 
@@ -334,7 +352,8 @@ def _(mo):
     ```python
     import triton
 
-    ms = triton.testing.do_bench(lambda: matmul(a, b))      # median ms
+    ms = triton.testing.do_bench(lambda: matmul(a, b),
+                                 return_mode="median")       # median ms
     tflops = 2 * M * N * K / (ms * 1e-3) / 1e12             # GEMM = 2*M*N*K FLOP
     gbytes = (a.numel() + b.numel() + M * N) * a.element_size()
     gbps   = gbytes / (ms * 1e-3) / 1e9
@@ -348,8 +367,9 @@ def _(mo):
       around the launch alone measures nothing.
     - **Flushes the L2 cache** between runs (the 48 MB L2 would otherwise serve a
       small matrix from cache and report a fantasy bandwidth).
-    - Reports the **median** over many reps to reject scheduler noise; you can also
-      ask for quantiles.
+    - Runs **many reps** so you can aggregate robustly. Careful: the default
+      `return_mode` is `"mean"` — this course always passes `return_mode="median"`
+      explicitly to reject scheduler-noise outliers (you can also ask for quantiles).
 
     Once you have milliseconds, convert to the roofline's currency: TFLOP/s for
     compute-bound kernels (matmul = $2MNK$ FLOP), GB/s for memory-bound ones, and
@@ -468,9 +488,10 @@ def _(mo):
     - **Propose a small, roofline-justified menu.** A handful of configs spanning
       big-compute-bound to small-high-occupancy, with varied `num_warps`/
       `num_stages`. Don't brute-force the Cartesian product — prune with the roofline.
-    - **`key` everything that changes the optimum.** List `M, N, K` (and dtype, if it
-      varies) so the autotuner re-tunes when the problem actually changes — and
-      accept the one-time tuning cost on the first call per key.
+    - **`key` everything that changes the optimum.** List the argument names — `M,
+      N, K` — so the autotuner re-tunes when the problem actually changes (tensor
+      dtypes are folded into the cache key automatically), and accept the one-time
+      tuning cost on the first call per key, per process.
     - **Measure honestly with `do_bench`.** Warmup, sync, L2 flush, median. Convert to
       TFLOP/s or GB/s and read it against the ceiling — that number, not vibes, tells
       you whether a config is good.

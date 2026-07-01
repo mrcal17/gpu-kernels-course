@@ -61,7 +61,7 @@ The full method (median over samples, choosing tolerances, the L2 trap) is the r
 
 ## Going for performance
 - With the padding in, you should land a large fraction of your `c03` copy
-  bandwidth; without it you'll see the conflict drag you down — flip the `+1`
+  bandwidth; without it you'll see the conflict drag you down — flip the padding
   on and off and watch the GB/s move. That A/B is the whole point of the lecture.
 - Next step toward the roofline: a `float4` vectorized copy moves 16 bytes per
   lane, cutting instruction overhead once the conflict is gone. (Mind that the

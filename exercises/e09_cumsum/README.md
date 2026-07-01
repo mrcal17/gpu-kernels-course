@@ -29,6 +29,8 @@ loop. Here it is for this kernel, to run yourself in a scratch script:
 ```python
 import torch, triton
 
+torch.manual_seed(0); x = torch.randn(4096, 2048, device="cuda", dtype=torch.float32)   # as spec.py builds it
+
 ref = torch.cumsum(x, dim=1)                # reference FIRST (torch)
 out = cumsum(x)                             # your kernel
 torch.testing.assert_close(out, ref, atol=1e-2, rtol=1e-3)   # a scan accumulates along the row -> reordered adds
@@ -44,7 +46,7 @@ running sum versus torch, so bit-equality would be the wrong test — small slac
 and timing traps: `7b`.
 
 ## Going further
-- **Cross-block scan:** if a row were larger than one block, a single `tl.cumsum`
+- **Cross-block scan:** if a row were larger than one block, a single in-block scan
   wouldn't suffice — you'd scan each block, then add each block's total as an offset to
   all later blocks (a scan of the block sums). That two-level structure is the general
   parallel-scan algorithm from `1g`. Try it with a deliberately small `BLOCK_SIZE`.

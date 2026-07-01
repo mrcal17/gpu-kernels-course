@@ -365,7 +365,7 @@ def _(regs_slider, smem_slider, tpb_slider):
         WARP = 32
         WARPS_CAP = 48
         GRAN = 256       # regs/warp granularity
-        BLOCK_CAP = 32   # hardware-ish per-SM block cap
+        BLOCK_CAP = 24   # CC 12.0 max resident blocks/SM (queried on this card)
 
         regs = int(regs_slider.value)
         smem = float(smem_slider.value)

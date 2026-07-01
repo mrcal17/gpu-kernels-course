@@ -124,6 +124,9 @@ def _(mo):
     | [4B: Capstone](4b_capstone/) | fused attention *or* quantized GEMM from scratch, benchmarked vs torch |
     | [7A: Study Guide & Reference](7a_study_guide/) | cheat-sheets, profiling, glossary, the roofline numbers, links |
     | [7B: Validating & Benchmarking](7b_validation_and_benchmarking/) | proving correctness with `assert_close`; timing with `do_bench`; GB/s & TFLOP/s vs the roofline; the `spec.py` contract |
+
+    *(Parts 5–6 are reserved for future material; Part 7 is pinned as the reference
+    appendix so its numbering stays stable.)*
     """)
     return
 
@@ -148,11 +151,11 @@ def _(mo):
        3a ─ 3b ─ 3c ─ 3d ─ 3e ─ 3f ─ 3g    CUDA C++, to the metal
                             │
                             ▼
-                      4a ─ 4b ──► 7a        Capstone, Blackwell, Reference
+                      4a ─ 4b ──► 7a ─ 7b   Capstone, Blackwell, Reference
     ```
 
     Part 0 is the hard prerequisite for everything. Part 3 re-derives Part 1's patterns
-    in raw CUDA, so it depends on Part 1, not on Part 2. Dip into 7A any time.
+    in raw CUDA, so it depends on Part 1, not on Part 2. Dip into 7A/7B any time.
     """)
     return
 

@@ -33,7 +33,8 @@ def quant_matmul_kernel(
     #       the N tail).
     # TODO: loop k from 0 to K in steps of BLOCK_K:
     #          load the (BLOCK_M x BLOCK_K) tile of A (fp16) and the
-    #          (BLOCK_K x BLOCK_N) tile of B as int8 (mask the K tail, other=0);
+    #          (BLOCK_K x BLOCK_N) tile of B as int8 (mask the K tail; load the
+    #          missing lanes as the additive identity);
     #          convert the int8 B tile to a float compute type and dequantize it
     #          (apply the per-channel scale you loaded) BEFORE the dot;
     #          accumulate the A tile against the dequantized B tile with tl.dot.
@@ -50,7 +51,8 @@ def quant_matmul(a: torch.Tensor, b_q: torch.Tensor, scale: torch.Tensor) -> tor
     #       every BLOCK_M x BLOCK_N tile of the MxN output (round up so ragged edges
     #       still get a tile -- recall the ceil-div helper from e07/e10). Pass all
     #       strides INCLUDING the scale's column stride; launch.
-    #       (e10 revisits this grid once the tile sizes come from @triton.autotune --
-    #        the grid becomes a callable that reads the chosen config's tile sizes.)
+    #       (in e10 the tile sizes came from @triton.autotune, so you used a callable
+    #        grid that read the chosen config; here you pick the tiles yourself, so a
+    #        plain tuple works.)
     raise NotImplementedError("write the quantized tiled matmul kernel + launch")
     return c

@@ -181,10 +181,14 @@ def _(mo):
 
     ## 3. `torch.library` — the modern custom op
 
-    `autograd.Function` works, but it's invisible to `torch.compile`, which sees it as
-    an opaque blob it can't reason about or fuse around. The modern path is to
-    register your kernel as a first-class **custom operator** with `torch.library`
-    (the `@torch.library.custom_op` decorator). You then register a separate
+    `autograd.Function` works — and since PyTorch 2.1, `torch.compile` can even trace
+    into `autograd.Function` subclasses rather than treating them as opaque. But that
+    tracing depends on Dynamo understanding your Python. For an op headed into
+    compiled production code, the modern path is to register your kernel as a
+    first-class **custom operator** with `torch.library` (the
+    `@torch.library.custom_op` decorator): it's the more robust contract, with a
+    declared schema and a guaranteed fake-tensor (meta) implementation the compiler
+    can rely on. You then register a separate
     "backward" via `register_autograd`, and a `register_fake` (a meta function that
     returns correctly-shaped empty tensors so the compiler can trace shapes without
     running the kernel).
@@ -213,9 +217,9 @@ def _(mo):
 
     What you buy by doing it this way:
 
-    - **`torch.compile` can see through it** — it knows the op's schema, shapes
-      (via the fake/meta fn), and gradient, so it can fuse, reorder, and CUDA-graph
-      around your kernel instead of treating it as a barrier.
+    - **`torch.compile` gets a guaranteed contract** — the op's schema, shapes
+      (via the fake/meta fn), and gradient are all declared, so it can fuse, reorder,
+      and CUDA-graph around your kernel without having to trace your Python at all.
     - **It behaves like a native op** under `vmap`, `torch.export`, serialization, and
       multiple dispatch backends.
 
@@ -439,8 +443,10 @@ def _(mo):
     `e13` asks you to wrap a fused op in a `torch.autograd.Function` with **both** a
     forward and a hand-written **fused backward** — the skeleton in §2 is your
     starting template, and the VJP contract in §1 is what your backward must satisfy.
-    The harness checks your gradients against `torch.autograd.gradcheck`, so they have
-    to be exactly right, not just close. The metric is bandwidth — the whole point is
+    The harness checks your gradients against PyTorch's own autograd backward of the
+    reference op — deliberately *not* `torch.autograd.gradcheck`, whose finite
+    differences are flaky on fp32 CUDA — so your kernel has to reproduce the true VJP,
+    not just land near a numerical estimate. The metric is bandwidth — the whole point is
     that your fused backward moves far less of it than the autograd-derived one would.
 
     That closes Part 2. From here, Part 3 re-derives every one of these patterns in

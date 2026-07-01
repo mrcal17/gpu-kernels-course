@@ -33,6 +33,8 @@ loop. Here it is for this kernel, to run yourself in a scratch script:
 ```python
 import torch, triton
 
+torch.manual_seed(0); x = torch.randn(4096, 4096, device="cuda", dtype=torch.float32)   # as spec.py builds it
+
 ref = x.sum(dim=1)                          # reference FIRST (torch)
 out = row_sum(x)                            # your kernel
 torch.testing.assert_close(out, ref, atol=1e-2, rtol=1e-3)   # a reduction reorders sums -> small slack

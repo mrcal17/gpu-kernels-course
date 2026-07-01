@@ -88,11 +88,11 @@ def _(mo):
     **(c) Shared memory / SM** — **~100 KB** usable (48 KB/block default, opt-in to
     ~99 KB). If a block declares `S` bytes of shared memory:
     $$\text{blocks}_{\text{smem}} = \left\lfloor \frac{100\,\text{KB}}{S} \right\rfloor.$$
-    A block that grabs 50 KB of shared memory can have **at most one block** per SM, no
-    matter how few threads or registers it uses.
+    A block that grabs 60 KB of shared memory allows **at most one resident block** per
+    SM ($\lfloor 100/60 \rfloor = 1$), no matter how few threads or registers it uses.
 
     The resident block count is the **minimum** across all three (and a hardware cap of
-    ~16–32 blocks/SM):
+    **24** blocks/SM on this card — CC 12.x):
 
     $$\text{blocks}_{\text{resident}} = \min\!\big(
       \text{blocks}_{\text{threads}},\,
@@ -192,7 +192,7 @@ def _(regs_slider, tpb_slider):
         MAX_REGS = 65536
         SMEM_KB = 100.0
         SMEM_PER_BLOCK = 8.0   # fixed in this demo
-        BLOCK_CAP = 32         # hardware-ish per-SM block cap
+        BLOCK_CAP = 24         # per-SM block cap (CC 12.x)
 
         tpb = int(tpb_slider.value)
         regs = int(regs_slider.value)

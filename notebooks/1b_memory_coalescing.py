@@ -25,9 +25,10 @@ def _(mo):
     that 896 GB/s you actually get.** For a memory-bound kernel (most of Part 1),
     bandwidth *is* the budget, and coalescing is how you spend it well.
 
-    We'll do three things: see how a warp's 32 addresses fuse into hardware
-    **transactions**; quantify what contiguous vs. strided vs. misaligned access costs in
-    transactions and therefore in effective bandwidth; and learn to compute **achieved
+    We'll do three things: see how a warp's 32 addresses fuse into hardware transactions
+    — counted in the **32-byte sectors** that DRAM actually moves; quantify what
+    contiguous vs. strided vs. misaligned access costs in sectors and therefore in
+    effective bandwidth; and learn to compute **achieved
     GB/s** — bytes moved over time — so you can score your own kernel against the ceiling.
     That number is the metric for `e03` and most of the exercises that follow.
     """)
@@ -71,34 +72,47 @@ def _(mo):
     mo.md(r"""
     ---
 
-    ## 2. A warp's 32 addresses → transactions
+    ## 2. A warp's 32 addresses → sectors
 
     Global memory is not byte-addressable in hardware. The memory system services a warp's
-    loads in **aligned transactions** — natural sizes are **32, 64, and 128 bytes**, and a
-    128-byte transaction is the common unit (it matches the L1/global cache line and a full
-    warp's worth of float32; L2/DRAM is accessed in finer 32-byte sectors). The key fact:
+    loads in fixed-size aligned chunks, and two sizes matter:
+
+    - The **L1 cache line** is **128 bytes** — exactly one warp's worth of float32
+      ($32 \times 4$ B). It's a handy unit for *thinking about* a warp's footprint, and
+      it's the "transaction" size older CUDA texts quote.
+    - The chunk that actually crosses **L2/DRAM** — the one that costs you bandwidth — is
+      the **32-byte sector**. A 128-byte line is 4 sectors, and the hardware only moves
+      the sectors a warp actually touches.
+
+    The key fact, stated in the unit that bills you:
 
     > The hardware looks at the 32 addresses a warp's lanes request, finds the set of
-    > aligned 128-byte segments they fall in, and issues **one transaction per distinct
-    > segment touched.**
+    > aligned **32-byte sectors** they fall in, and moves **one sector per distinct
+    > sector touched.**
 
-    So the cost of a warp's load, in transactions, is *the number of distinct 128-byte
-    segments its 32 addresses span* — nothing to do with the order of the lanes, only
-    which segments get touched. The best case and worst case for one warp of float32
-    (4 bytes each, so 32 lanes want exactly $32\times4 = 128$ bytes = one segment's worth):
+    So the cost of a warp's load is *the number of distinct 32-byte sectors its 32
+    addresses span* — nothing to do with the order of the lanes, only which sectors get
+    touched. For one warp of float32 (32 lanes wanting $32\times4 = 128$ useful bytes
+    = exactly 4 sectors' worth):
 
-    - **Coalesced** (32 contiguous, aligned floats): all 32 addresses land in **one**
-      128-byte segment → **1 transaction**, 100% used. This is the ceiling.
-    - **Strided by $s$**: consecutive lanes are $s$ elements apart, scattering them across
-      **up to 32 different segments** → up to **32 transactions** for the same 128 useful
-      bytes → as little as $1/32 \approx 3\%$ efficiency.
-    - **Misaligned** (contiguous but the base address isn't a multiple of 128): the 32
-      floats straddle a segment boundary → **2 transactions** instead of 1 → ~50% on that
-      warp.
+    - **Coalesced** (32 contiguous, aligned floats): the 128 bytes fill exactly **4
+      sectors**, every fetched byte used → **100%** efficiency. This is the ceiling.
+    - **Strided by $s$**: consecutive lanes are $s$ elements apart, so each sector
+      delivers 32 bytes of which the warp uses fewer and fewer — until at **stride 8**
+      (32 bytes between lanes) every lane sits in its **own sector**: 32 sectors for 128
+      useful bytes → $4/32 = 1/8$ efficiency. Larger strides can't do worse — a lane
+      can't waste more than its whole sector — so the floor is **12.5%, hit already at
+      stride 8**.
+    - **Misaligned** (contiguous but the base address isn't sector-aligned): the warp's
+      128 bytes straddle one extra boundary → **5 sectors instead of 4** → 80% for that
+      warp in isolation (and §3 shows why a streaming read makes it milder still).
 
-    The numpy cell counts exactly this — distinct segments per warp — for several
+    The numpy cell counts exactly this — distinct sectors per warp — for several
     patterns. It is a simulation of the *addressing rule*, not a GPU measurement, but the
-    transaction counts are what the hardware would issue.
+    sector counts are what the hardware would move. For comparison it also counts
+    **128-byte lines** (the classic transaction model): note how the line model
+    *over-bills* large strides (predicting 3% where the real floor is 12.5%) and
+    misalignment (predicting 50% where the truth is 80%).
     """)
     return
 
@@ -110,32 +124,37 @@ def _():
 
         WARP = 32          # lanes per warp
         DTYPE = 4          # float32 bytes
-        SEG = 128          # bytes per aligned transaction (segment)
+        SECTOR = 32        # bytes per L2/DRAM sector -- the unit that costs bandwidth
+        LINE = 128         # bytes per L1 cache line  -- the classic "transaction" unit
 
-        def transactions(addrs_bytes):
-            # distinct aligned 128B segments the warp's addresses fall in
-            segs = np.unique(np.asarray(addrs_bytes) // SEG)
-            used = WARP * DTYPE                 # bytes the warp actually wants
-            fetched = segs.size * SEG           # bytes DRAM must deliver
-            return segs.size, used, fetched
+        def chunks(addrs_bytes, size):
+            # distinct aligned `size`-byte chunks the warp's addresses fall in
+            return np.unique(np.asarray(addrs_bytes) // size).size
 
         _lanes = np.arange(WARP)
         _patterns = [
             ("coalesced (stride 1, aligned)", _lanes * DTYPE),
-            ("misaligned by 8 bytes",         _lanes * DTYPE + 8),
+            ("misaligned by 1 element",       _lanes * DTYPE + DTYPE),
             ("stride 2",                       _lanes * 2 * DTYPE),
             ("stride 8",                       _lanes * 8 * DTYPE),
             ("stride 32",                      _lanes * 32 * DTYPE),
         ]
 
-        print("=== Transactions for one warp (float32, 128B segments) ===\n")
-        print(f"  {'pattern':32s} {'txns':>5s} {'used B':>7s} {'fetched B':>10s} {'eff':>6s}")
-        print("  " + "-" * 64)
+        _used = WARP * DTYPE   # bytes the warp actually wants (128)
+        print("=== One warp of float32: 32B sectors (ground truth) vs 128B lines ===\n")
+        print(f"  {'pattern':30s} {'sectors':>7s} {'fetched B':>10s} {'eff':>5s}"
+              f"  |  {'128B lines':>10s} {'line eff':>9s}")
+        print("  " + "-" * 82)
         for _name, _addrs in _patterns:
-            _t, _u, _f = transactions(_addrs)
-            print(f"  {_name:32s} {_t:>5d} {_u:>7d} {_f:>10d} {_u / _f:>5.0%}")
-        print("\n  1 transaction = the whole warp in one burst (the ceiling).")
-        print("  Each extra segment is bandwidth fetched and thrown away.")
+            _ns = chunks(_addrs, SECTOR)
+            _nl = chunks(_addrs, LINE)
+            print(f"  {_name:30s} {_ns:>7d} {_ns * SECTOR:>10d} "
+                  f"{_used / (_ns * SECTOR):>5.0%}  |  {_nl:>10d} "
+                  f"{_used / (_nl * LINE):>8.0%}")
+        print(f"\n  Useful bytes per warp = {_used} = 4 full sectors; 4 sectors/warp is")
+        print("  the ceiling. Sectors are what DRAM bills: the 128B-line model over-")
+        print("  charges big strides (3% vs the real 1/8 floor) and misalignment")
+        print("  (50% vs the real 80%).")
 
     _run()
     return
@@ -152,31 +171,38 @@ def _(mo):
     how you'd produce it in a Triton kernel (`1a`):
 
     - **Contiguous / coalesced.** `offs = pid*BLOCK + tl.arange(0, BLOCK)` — consecutive
-      lanes, consecutive elements. Each warp reads one aligned run. This is the *default*
-      you get from the standard 1-D pattern, and why that pattern is the standard.
-      Efficiency ≈ 100%.
+      lanes, consecutive elements. Each warp's 128 bytes fill 4 fully-used sectors. This
+      is the *default* you get from the standard 1-D pattern, and why that pattern is the
+      standard. Efficiency ≈ 100%.
     - **Strided.** `offs = base + tl.arange(0, BLOCK) * s`, or implicitly when you walk a
       tensor along its non-contiguous axis (reading **columns** of a row-major matrix has
-      stride = number of columns). Efficiency falls roughly as $1/s$ until the warp is
-      spread over 32 separate segments. This is the classic transpose / column-reduction
-      trap.
-    - **Misaligned.** Contiguous data, but the starting address isn't a multiple of 128
-      bytes (e.g. you sliced an array at an odd offset). Each warp straddles one extra
-      segment boundary → roughly a constant $\sim$2× transaction count, so ~50–90%
-      depending on `BLOCK_SIZE`. Less catastrophic than striding, but free to avoid by
-      aligning allocations.
+      stride = number of columns). Efficiency falls as $1/s$ — but only until **stride 8**
+      (fp32), where each lane already occupies its own 32-byte sector and the damage
+      saturates. This is still the classic transpose / column-reduction trap.
+    - **Misaligned.** Contiguous data, but the starting address isn't sector-aligned
+      (e.g. you sliced an array at an odd offset). One warp *in isolation* touches 5
+      sectors instead of 4 → 80%. But in a **streaming** read the straddled sector isn't
+      wasted — the *next* warp uses the rest of it. $N$ consecutive warps touch $4N + 1$
+      sectors for $4N$ sectors' worth of useful data, so aggregate efficiency is
+      $\approx N/(N+1)$: a **percent-level penalty**, independent of `BLOCK_SIZE`.
 
-    The effective-bandwidth model from §1 turns each into a number. With stride $s$, in
-    the worst case a warp fetches $s\times$ the bytes it uses (capped at 32 segments), so
+    The effective-bandwidth model from §1 turns each into a number. With element stride
+    $s$ (fp32), a warp touches $\min(4s,\, 32)$ sectors for its 4 sectors' worth of
+    useful bytes, so
 
-    $$\text{achieved BW} \approx \frac{B_{\text{peak}}}{\min(s,\ \text{segments per warp})}.$$
+    $$\text{achieved BW} \approx \frac{B_{\text{peak}}}{\min(s,\ 8)}
+      \qquad\Rightarrow\qquad
+      \text{floor} = \frac{896}{8} \approx 112\ \text{GB/s at stride} \ge 8.$$
 
-    Misalignment adds roughly one segment per warp regardless of stride. The takeaway is
-    blunt: **stride is the expensive mistake; alignment is the cheap one.**
+    Misalignment adds one sector per warp — amortized to ~nothing by streaming. The
+    takeaway is blunt, with honest numbers: **stride is the expensive mistake (up to 8×
+    on fp32); misalignment is the cheap one (~1%)** — free to avoid by aligning
+    allocations, and mostly harmless when you can't.
 
     > [CUDA C++ Best Practices — Coalesced Access to Global Memory](https://docs.nvidia.com/cuda/cuda-c-best-practices-guide/index.html#coalesced-access-to-global-memory)
-    > works through aligned, misaligned, and strided cases with the same transaction
-    > accounting.
+    > works through aligned, misaligned, and strided cases with the same accounting
+    > (quoted there in 128-byte-line units; on modern GPUs the L2 sector — what profiler
+    > metrics like `sectors/request` count — is the unit that matches measurement).
     """)
     return
 
@@ -184,13 +210,14 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### Transactions per warp as stride grows
+    ### Sectors per warp as stride grows
 
-    The plot sweeps stride and shows two curves: the **transactions a warp must issue**
-    (left, lower is better — 1 is ideal) and the resulting **effective bandwidth** (right,
-    starting from the 896 GB/s ceiling). Watch how a handful of stride steps already
-    halve, quarter, then decimate the usable bandwidth — long before stride reaches the
-    32-segment floor.
+    The plot sweeps stride and shows two curves: the **32-byte sectors a warp must
+    fetch** (left, lower is better — 4 is ideal for fp32) and the resulting **effective
+    bandwidth** (right, starting from the 896 GB/s ceiling). Watch how a handful of
+    stride steps already halve, then quarter the usable bandwidth — and how the damage
+    *saturates* at stride 8, where every lane owns a whole sector and the floor of
+    $1/8$ of peak (~112 GB/s) is reached.
     """)
     return
 
@@ -203,39 +230,43 @@ def _():
 
         WARP = 32
         DTYPE = 4
-        SEG = 128
+        SECTOR = 32
         PEAK = 896.0   # GB/s
 
-        def txns(stride):
+        def sectors(stride):
             addrs = (np.arange(WARP) * stride) * DTYPE
-            return np.unique(addrs // SEG).size
+            return np.unique(addrs // SECTOR).size
 
         strides = np.arange(1, 33)
-        nt = np.array([txns(int(s)) for s in strides])
-        # efficiency = used bytes / fetched bytes = (32*4) / (txns*128) = 1/txns
-        eff = (WARP * DTYPE) / (nt * SEG)
+        ns = np.array([sectors(int(s)) for s in strides])
+        # efficiency = used bytes / fetched bytes = (32*4) / (sectors*32) = 4/sectors
+        eff = (WARP * DTYPE) / (ns * SECTOR)
         bw = eff * PEAK
 
         _fig, (_ax1, _ax2) = plt.subplots(1, 2, figsize=(9.5, 3.4))
 
-        _ax1.plot(strides, nt, color="#5b8def", linewidth=2, marker="o", markersize=3)
-        _ax1.axhline(1, color="#4c9f70", linestyle="--", linewidth=1.3,
-                     label="ideal = 1 txn/warp")
+        _ax1.plot(strides, ns, color="#5b8def", linewidth=2, marker="o", markersize=3)
+        _ax1.axhline(4, color="#4c9f70", linestyle="--", linewidth=1.3,
+                     label="ideal = 4 sectors/warp")
+        _ax1.axhline(32, color="#999", linestyle=":", linewidth=1.2,
+                     label="max = 32 (1 lane per sector)")
         _ax1.set_xlabel("stride (elements between lanes)")
-        _ax1.set_ylabel("transactions per warp")
+        _ax1.set_ylabel("32B sectors per warp")
         _ax1.set_title("Strided access fragments the warp")
         _ax1.legend(loc="lower right", fontsize=8)
 
         _ax2.plot(strides, bw, color="#d65f5f", linewidth=2, marker="o", markersize=3)
         _ax2.axhline(PEAK, color="#4c9f70", linestyle="--", linewidth=1.3,
                      label=f"peak {PEAK:.0f} GB/s")
+        _ax2.axhline(PEAK / 8, color="#999", linestyle=":", linewidth=1.2,
+                     label=f"floor = peak/8 ~ {PEAK / 8:.0f} GB/s")
         _ax2.set_xlabel("stride (elements between lanes)")
         _ax2.set_ylabel("effective bandwidth (GB/s)")
         _ax2.set_ylim(0, PEAK * 1.08)
-        _ax2.set_title("...and so craters the bandwidth")
+        _ax2.set_title("...and craters bandwidth (until stride 8)")
         _ax2.legend(loc="upper right", fontsize=8)
 
-        _fig.suptitle("One warp, float32: transactions and bandwidth vs. stride", y=1.03)
+        _fig.suptitle("One warp, float32: 32B sectors and bandwidth vs. stride", y=1.03)
         _fig.tight_layout()
         return _fig
 
@@ -249,10 +280,11 @@ def _(mo):
     ### Slide the stride, feel the ceiling drop
 
     Pick a stride and read off how far below 896 GB/s it leaves you. Stride 1 is glued to
-    the ceiling; by stride 8 you're at an eighth of peak; past the point where every lane
-    lands in its own 128-byte segment, the warp is issuing the maximum 32 transactions and
-    bandwidth bottoms out. This is the same simulation you'll see happen *for real* in
-    `e03` when you stride a copy kernel on the GPU.
+    the ceiling; by stride 8 you're at an eighth of peak — and that's the **floor**: at
+    stride 8 every lane already lands in its own 32-byte sector, the warp is fetching the
+    maximum 32 sectors, and larger strides can't make it worse (~112 GB/s on this card,
+    not the ~28 GB/s the 128-byte-line model would predict). This is the same simulation
+    you'll see happen *for real* in `e03` when you stride a copy kernel on the GPU.
     """)
     return
 
@@ -273,20 +305,20 @@ def _(stride_slider):
 
         WARP = 32
         DTYPE = 4
-        SEG = 128
+        SECTOR = 32
         PEAK = 896.0
 
         def stats(stride):
             addrs = (np.arange(WARP) * stride) * DTYPE
-            nt = np.unique(addrs // SEG).size
-            eff = (WARP * DTYPE) / (nt * SEG)
-            return nt, eff
+            ns = np.unique(addrs // SECTOR).size
+            eff = (WARP * DTYPE) / (ns * SECTOR)
+            return ns, eff
 
         strides = np.arange(1, 33)
         bws = np.array([stats(int(s))[1] for s in strides]) * PEAK
 
         s = int(stride_slider.value)
-        s_nt, s_eff = stats(s)
+        s_ns, s_eff = stats(s)
         s_bw = s_eff * PEAK
 
         _fig, _ax = plt.subplots(figsize=(8.0, 3.6))
@@ -294,11 +326,13 @@ def _(stride_slider):
         _ax.bar([s], [s_bw], color="#d65f5f", edgecolor="none", width=0.85)
         _ax.axhline(PEAK, color="#4c9f70", linestyle="--", linewidth=1.5,
                     label=f"peak {PEAK:.0f} GB/s")
+        _ax.axhline(PEAK / 8, color="#999", linestyle=":", linewidth=1.3,
+                    label=f"floor = peak/8 ~ {PEAK / 8:.0f} GB/s (stride >= 8)")
         _ax.set_xlabel("stride (elements)")
         _ax.set_ylabel("effective DRAM bandwidth (GB/s)")
         _ax.set_ylim(0, PEAK * 1.08)
         _ax.set_title(
-            f"stride={s}:  {s_nt} txns/warp  ->  ~{s_bw:.0f} GB/s  "
+            f"stride={s}:  {s_ns} sectors/warp  ->  ~{s_bw:.0f} GB/s  "
             f"({s_eff:.0%} of peak)"
         )
         _ax.legend(loc="upper right")
@@ -364,13 +398,13 @@ def _():
         print(f"  bytes moved = 2 * 4 * N = {bytes_moved / 1e6:.0f} MB\n")
         print(f"  {'time (ms)':>10s} {'GB/s':>9s} {'% of peak':>10s}")
         print("  " + "-" * 32)
-        for _t_ms in [0.60, 0.80, 1.20, 2.40, 8.00]:
+        for _t_ms in [0.60, 0.80, 1.20, 2.40, 4.80]:
             _t = _t_ms * 1e-3
             _gbps = (bytes_moved / _t) / 1e9
             print(f"  {_t_ms:>10.2f} {_gbps:>9.0f} {_gbps / PEAK:>9.0%}")
         print("\n  Same bytes; only the time changes. The fastest row (~0.6 ms) rides")
-        print("  the coalesced ceiling; the 8 ms row is what a badly strided")
-        print("  (worse than stride-8) pattern costs.")
+        print("  the coalesced ceiling; the ~4.8 ms row (~1/8 of peak) is the stride-8")
+        print("  sector floor -- the worst a strided fp32 pattern can do.")
 
     _run()
     return
@@ -387,12 +421,14 @@ def _(mo):
       `e09`, `e13`) the metric is GB/s vs. 896. Before optimizing, compute the bytes the
       operation *must* move — that fixes your ceiling and tells you what "done" looks like.
     - **Coalesce by construction.** Use the contiguous `pid*BLOCK + arange` indexing from
-      `1a` so each warp reads one aligned segment. The moment your `offs` become strided
-      (reading a column, an un-transposed axis), expect the bandwidth to fall like the
-      slider shows.
-    - **Mind alignment.** Don't slice tensors at odd offsets on the hot path; a misaligned
-      base costs a near-constant extra transaction per warp. It's the cheapest penalty to
-      avoid.
+      `1a` so each warp's 128 bytes fill 4 fully-used 32-byte sectors. The moment your
+      `offs` become strided (reading a column, an un-transposed axis), expect the
+      bandwidth to fall like the slider shows — as $1/s$, down to the $1/8$-of-peak
+      floor at stride 8.
+    - **Mind alignment — but don't fear it.** A misaligned base costs one extra sector
+      per warp, and streaming warps share the straddled sector, so the aggregate tax is
+      ~1%. Keep hot-path allocations aligned because it's free to do, not because
+      misalignment is catastrophic — stride is the mistake that costs 8×.
     - **Always `do_bench`.** Achieved GB/s is meaningless from a single timed launch.
       Median-of-many, warmup discarded — then divide bytes by time. That's the one number
       that tells you whether you're near the roof from `0d`.

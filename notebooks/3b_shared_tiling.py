@@ -279,6 +279,10 @@ def _(mo):
     `0d`; the title reports the reuse factor (= `TILE`) and how many such blocks could
     fit per SM by the shared-memory limit alone. Watch a big tile buy more reuse but
     crowd the SM — the same threads-vs-resources tug-of-war as the occupancy lecture.
+    One more ceiling to respect: with one thread per tile cell, a block needs
+    `TILE×TILE` threads, and the hardware caps a block at **1024 threads** — past
+    `TILE=32` the readout flags the configuration as unlaunchable (real kernels go
+    bigger by giving each thread *several* outputs instead).
     """)
     return
 
@@ -303,7 +307,9 @@ def _(tile_slider):
 
         DEFAULT_BLOCK_KB = 48.0
         SM_KB = 100.0
+        MAX_TPB = 1024                                 # hardware threads/block ceiling
         threads_per_block = TILE * TILE                # one thread per output tile cell
+        launchable = threads_per_block <= MAX_TPB
 
         # how many blocks fit per SM by shared-mem rule (using opt-in ~100KB ceiling)
         blocks_by_smem = int(SM_KB // kb_per_block) if kb_per_block > 0 else 0
@@ -337,9 +343,16 @@ def _(tile_slider):
         _fitnote = (f"{blocks_by_smem} block(s)/SM by smem"
                     if not over_default
                     else "exceeds 48KB default -> needs opt-in")
-        _fig.suptitle(
-            f"TILE={TILE}: {threads_per_block} threads/block, "
-            f"{kb_per_block:.1f} KB smem, {_fitnote}", y=1.03, fontsize=9.5)
+        if launchable:
+            _title = (f"TILE={TILE}: {threads_per_block} threads/block, "
+                      f"{kb_per_block:.1f} KB smem, {_fitnote}")
+            _color = "black"
+        else:
+            _title = (f"TILE={TILE}: {threads_per_block} threads/block "
+                      f"EXCEEDS the {MAX_TPB} threads/block hardware max — "
+                      f"UNLAUNCHABLE with one thread per cell")
+            _color = "#d65f5f"
+        _fig.suptitle(_title, y=1.03, fontsize=9.5, color=_color)
         _fig.tight_layout()
         return _fig
 

@@ -50,7 +50,7 @@ def _(mo):
     | Warp size | **32** | everything — coalescing, divergence (`0b`,`3c`,`3d`) |
     | Max resident threads / SM | **1536** (= **48 warps**) | occupancy ceiling (`0d`) |
     | Max threads / block | **1024** (= 32 warps) | launch config (`0b`) |
-    | Registers / SM | **65,536** | reg-bound occupancy; ~42 regs/thd for 100% (`0d`,`3e`) |
+    | Registers / SM | **65,536** | reg-bound occupancy; ≤40 regs/thd for 100% (`0d`,`3e`) |
     | Shared memory / SM | **~100 KB** (48 KB/block default, opt-in ~99 KB) | smem-bound occupancy, tile size (`0c`,`0d`,`3b`) |
     | L2 cache | **48 MB** | reuse across blocks (`0c`) |
     | Memory bus | **256-bit** | — |
@@ -86,8 +86,11 @@ def _(mo):
       b_{\text{smem}} = \left\lfloor \frac{100\,\text{KB}}{S} \right\rfloor.$$
 
     Resident warps $= \text{resident blocks} \times (T/32)$. The **smallest** of the four
-    rules is the binding limiter. Rules of thumb: $R \lesssim 42$ for 100% occupancy; a
-    block grabbing 50 KB smem caps at ~1 block/SM; block size should be a multiple of 32.
+    rules is the binding limiter ($b_{\text{cap}} = 24$ blocks/SM on `sm_120`). Rules of
+    thumb: $R \le 40$ for 100% occupancy (registers are allocated in 256-per-warp chunks,
+    so 41–42 already rounds up to 1536/warp → 42 warps → 88%; see `3e`); a block grabbing
+    50 KB smem caps at 2 blocks/SM ($\lfloor 100/50 \rfloor$); block size should be a
+    multiple of 32.
     **Occupancy is a means, not a goal** — enough warps to hide latency, then stop.
     (Full derivation: `0d`.) Use the small calculator below to spot-check a config.
     """)
@@ -98,7 +101,7 @@ def _(mo):
 def _():
     def _run():
         # Quick occupancy spot-check for a few common configs on the 5070 Ti.
-        MAX_THREADS, MAX_REGS, SMEM_KB, CAP = 1536, 65536, 100.0, 32
+        MAX_THREADS, MAX_REGS, SMEM_KB, CAP = 1536, 65536, 100.0, 24
 
         def occ(tpb, regs, smem_kb):
             bt = MAX_THREADS // tpb
@@ -274,7 +277,8 @@ def _(cheat_dropdown, mo):
     $$\text{occ} = \frac{\text{resident warps}}{48},\quad
       \text{blocks} = \min\!\Big(\tfrac{1536}{T},\, \tfrac{65536}{RT},\,
       \tfrac{100\text{KB}}{S},\, b_{\text{cap}}\Big).$$
-    Resident warps $= \text{blocks}\times(T/32)$. Want 100%? Keep $R \lesssim 42$.
+    Resident warps $= \text{blocks}\times(T/32)$. Want 100%? Keep $R \le 40$ (the last
+    100% rung — 256-reg/warp allocation granularity makes 41–42 land at 88%).
 
     **Roofline:**
     $$P(I) = \min(P_{\text{peak}},\; B\cdot I),\qquad
@@ -376,7 +380,9 @@ def _(mo):
     ## 4. Profiling guide
 
     **`triton.testing.do_bench`** — the everyday timer. Warms up, runs many iters, returns
-    a robust **median** latency (ms). Pass `quantiles=[0.5, 0.2, 0.8]` for a spread.
+    a latency (ms). The default `return_mode` is `"mean"`; the course convention is to pass
+    `return_mode="median"` explicitly for a robust median. Pass `quantiles=[0.5, 0.2, 0.8]`
+    for a spread.
     Convert: GB/s = bytes / (ms·1e-3); TFLOP/s = FLOPs / (ms·1e-3) / 1e12. *Always* bench
     the torch baseline through the same harness.
 
@@ -547,7 +553,7 @@ def _(mo):
     | **online softmax** | streaming softmax with a running max/sum (no full row) (`1d`,`2b`) |
     | **autotuning** | searching block sizes / num_warps / num_stages for the best config (`2a`) |
     | **`program_id`** | Triton: which program (block) the instance is (`1a`) |
-    | **`do_bench`** | `triton.testing` median-latency benchmark (§4) |
+    | **`do_bench`** | `triton.testing` latency benchmark (pass `return_mode="median"`; §4) |
     | **Nsight Compute (`ncu`)** | NVIDIA kernel profiler — occupancy, throughput, stalls (§4) |
     | **launch config** | the `<<<grid, block>>>` / Triton grid that maps data to threads |
     | **`__syncthreads`** | block-wide barrier; all threads must reach it |

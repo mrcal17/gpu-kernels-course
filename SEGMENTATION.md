@@ -84,6 +84,9 @@
 | `4b_capstone` | fused attention *or* quantized GEMM from scratch; benchmark vs `torch.scaled_dot_product_attention`; integrate into a real model | `capstone` |
 
 ### Part 7 — Reference
+*(Parts 5–6 are reserved for future material; Part 7 is pinned as the reference
+appendix so its numbering stays stable if parts are added.)*
+
 | Module | Topics |
 |---|---|
 | `7a_study_guide` | cheat-sheets (Triton API, CUDA launch, occupancy math); profiling (Nsight Compute / `do_bench`); the 5070 Ti roofline numbers; glossary; debugging checklist; reference links |
@@ -105,7 +108,7 @@
    3a ─ 3b ─ 3c ─ 3d ─ 3e ─ 3f ─ 3g
                         │
                         ▼
-                  4a ─ 4b ──► 7a (reference, dip in anytime)
+                  4a ─ 4b ──► 7a ─ 7b (reference, dip in anytime)
 ```
 Part 3 depends conceptually on Part 1 (same patterns, lower level), not on Part 2.
 Part 0 is the hard prerequisite for everything.
@@ -127,7 +130,7 @@ Part 0 is the hard prerequisite for everything.
 | `e12` quantized matmul | 2c | flops |
 | `e13` fused op + backward | 2d | bandwidth |
 | `c01`–`c06` | Part 3 | per-exercise |
-| `capstone` | 4b | flops |
+| `capstone` | 4b | self-defined (its `spec.py` is a template the learner fills in; ships as a runnable flops-metric placeholder) |
 
 ## Build notes
 - Lecture notebooks must stay **pyodide-safe** (numpy/scipy/matplotlib only) so
@@ -138,9 +141,9 @@ Part 0 is the hard prerequisite for everything.
 
 ## Authoring status
 - ✅ infra (`harness/`, `build_site.py`, `launch.ps1`, requirements), conventions (`CLAUDE.md`)
-- ✅ all 26 lecture notebooks authored (`home` + `0a`–`7a`); every one passes `marimo check`
-- ✅ cross-model adversarial review run (Claude + Codex critic, binary-rubric verify); see `REVIEW.md`.
+- ✅ all 26 lecture notebooks authored (`0a`–`7b`, plus the `home` index — 27 files); every one passes `marimo check`
+- ✅ cross-model adversarial review run (Claude + Codex critic, binary-rubric verify); see `reviews/REVIEW.md`.
       Fixed: solution-leaks in `1d`/`1e`/`1f`/`7a` (lectures had shipped full kernels — now blanked to
       `...`-style skeletons), harness `--watch` crash + mean/median + reference-ordering bugs, the
       per-SM block cap (now 32 across `0b`/`0d`/`3e`/`7a`), and the `e07` TF32 precision note.
-- ✅ exercises `e01`–`e13` (Triton) + `c01`–`c06` (CUDA C++) scaffolded as solution-free stubs; all load/compile + report `[TODO]`, verified on-GPU. CUDA path: `harness/runner.py` builds `kernel.cu`+`harness.cu` via `nvcc -arch=sm_120` (MSVC `vcvars64` auto-located through `vswhere`; `VCVARS` env override)
+- ✅ exercises `e01`–`e13` (Triton) + `c01`–`c06` (CUDA C++) scaffolded as solution-free stubs, plus the self-directed `capstone` template (learner-authored `spec.py` + stub `kernel.py`); all load/compile + report `[TODO]`, verified on-GPU. CUDA path: `harness/runner.py` builds `kernel.cu`+`harness.cu` via `nvcc -arch=sm_120` (MSVC `vcvars64` auto-located through `vswhere`; `VCVARS` env override)

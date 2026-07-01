@@ -53,6 +53,8 @@ loop. Here it is for this kernel, to run yourself in a scratch script:
 import torch, triton
 import torch.nn.functional as F
 
+torch.manual_seed(0); q = torch.randn(2, 4, 512, 64, device="cuda", dtype=torch.float16); k = torch.randn_like(q); v = torch.randn_like(q)   # as spec.py builds them
+
 ref = F.scaled_dot_product_attention(q, k, v, is_causal=False)   # reference FIRST (torch)
 out = flash_attention(q, k, v)                                   # your kernel
 torch.testing.assert_close(out, ref, atol=1e-2, rtol=1e-2)   # fp16 data + fp32 softmax -> looser

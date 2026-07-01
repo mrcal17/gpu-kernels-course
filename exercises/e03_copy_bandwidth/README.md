@@ -31,6 +31,8 @@ loop. Here it is for this kernel, to run yourself in a scratch script:
 ```python
 import torch, triton
 
+torch.manual_seed(0); x = torch.randn(1 << 25, device="cuda", dtype=torch.float32)   # as spec.py builds it
+
 ref = x.clone()                             # reference FIRST (torch)
 out = copy(x)                               # your kernel
 torch.testing.assert_close(out, ref, atol=0.0, rtol=0.0)   # a copy moves bytes unchanged -> exact

@@ -101,5 +101,22 @@ exercises/<id>_<slug>/
   Only lecture notebooks are exported; the exercise harness is local-only.
 
 Deps: `requirements.txt` is the pyodide-safe set for notebooks/site. The exercise
-harness uses your local GPU stack (`requirements-exercises.txt`: torch + triton,
-already installed on this machine).
+harness uses your local GPU stack (`requirements-exercises.txt`: torch + triton —
+tested with torch 2.10 cu128 + triton 3.6 on an RTX 5070 Ti).
+
+---
+
+## Personal solutions (keep them out of git)
+
+- The author's worked solutions live in `solutions/` (gitignored).
+- The solved exercise `kernel.py` files (`e01`–`e07`) are marked
+  **`skip-worktree`** in git, so `git add -A` cannot stage the worked code —
+  the committed blobs stay the clean stubs.
+- Inspect / clear the flags:
+  ```bash
+  git ls-files -v | grep ^S                       # list skip-worktree'd files
+  git update-index --no-skip-worktree <file>      # clear (to commit a stub change)
+  git update-index --skip-worktree <file>         # re-apply
+  ```
+- **When a new exercise gets solved, apply the same treatment** before working
+  in its `kernel.py`: `git update-index --skip-worktree exercises/<id>/kernel.py`.

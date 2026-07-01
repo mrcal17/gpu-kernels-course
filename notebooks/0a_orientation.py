@@ -146,7 +146,7 @@ def _():
         import matplotlib.pyplot as plt
 
         # Order-of-magnitude latencies (cycles) -- illustrative, typical GPU values.
-        levels = ["Register", "Shared/L1", "L2", "DRAM (HBM/GDDR)"]
+        levels = ["Register", "Shared/L1", "L2", "DRAM (GDDR)"]
         cycles = [1, 30, 200, 500]
         colors = ["#4c9f70", "#5b8def", "#e0a458", "#d65f5f"]
 

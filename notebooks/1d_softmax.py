@@ -243,8 +243,10 @@ def _(mo):
     [Triton fused-softmax tutorial](https://triton-lang.org/main/getting-started/tutorials/02-fused-softmax.html),
     **each program handles one row.** It does **one** `tl.load` of the whole row into
     SRAM (registers / shared memory), runs all three passes on the resident copy, and
-    does **one** `tl.store` of the result. One load, one store — the DRAM traffic drops
-    by ~3x versus the unfused version, and on a memory-bound op that is the speedup.
+    does **one** `tl.store` of the result. One load, one store — versus the unfused
+    version the row **reads drop 3×** (three passes → one), and since the write happens
+    either way, **total DRAM traffic falls ~2×** (3 reads + 1 write → 1 read + 1 write).
+    On a memory-bound op that traffic cut *is* the speedup.
 
     The skeleton — structure only; you fill in the details in the exercise:
 
@@ -344,7 +346,7 @@ def _():
         _labels = [f"x={v:.0f}" for v in _x]
         _idx = np.arange(len(_x))
 
-        _f32_max = np.finfo(np.float32).max          # ~3.4e38
+        _f32_max = float(np.finfo(np.float32).max)   # ~3.4e38 (as float64: no overflow below)
 
         _naive = np.exp(_x)                          # huge; last entry overflows f32
         _stable = np.exp(_x - _x.max())             # in (0, 1], last entry = 1

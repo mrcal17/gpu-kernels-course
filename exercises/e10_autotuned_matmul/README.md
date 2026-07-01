@@ -5,7 +5,7 @@ is a multiple of a nice block size) and you stop hand-picking the tile. Two new
 jobs on top of `e07`: be correct for **any** shape, and hand the tile choice to
 `@triton.autotune`.
 
-Unlocked by: `e07_matmul`, `2a` (occupancy / shared memory).
+Unlocked by: `e07_matmul`, `2a` (autotuning).
 
 ## The spec
 - Inputs: `A`, `B` float32 with deliberately awkward dimensions — `M`, `N`, **and**
@@ -27,7 +27,7 @@ Unlocked by: `e07_matmul`, `2a` (occupancy / shared memory).
    load and the final store so off-edge lanes read and write nothing.
 3. **The contraction dimension can be ragged too.** When `K` is not a multiple of
    your K-block, the last K-chunk is partial — mask it and load the missing lanes
-   as zero (`other=0.0`) so they add *exactly* nothing to the dot product.
+   as the additive identity so they add *exactly* nothing to the dot product.
 4. **The tile sizes are no longer constants you wrote** — the autotuner supplies
    them. That changes how the launch grid is computed: the grid has to ask the
    chosen config how big the tiles are. Think about where the block sizes come
@@ -47,6 +47,8 @@ loop. Here it is for this kernel, to run yourself in a scratch script:
 ```python
 import torch, triton
 torch.backends.cuda.matmul.allow_tf32 = False   # fair fp32 reference
+
+torch.manual_seed(0); a = torch.randn(1023, 1025, device="cuda", dtype=torch.float32); b = torch.randn(1025, 769, device="cuda", dtype=torch.float32)   # as spec.py builds them (ragged M/K/N)
 
 ref = a @ b                                 # reference FIRST (torch)
 out = matmul(a, b)                          # your kernel

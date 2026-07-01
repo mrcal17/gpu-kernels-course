@@ -6,7 +6,7 @@ C = A @ B again, but with two new jobs on top of e07:
   (2) stop hand-picking the tile -- hand the choice to @triton.autotune and let
       the tuner search a menu of configs you design.
 
-Read README.md (and lecture 2a on occupancy / shared memory) carefully.
+Read README.md (and lecture 2a on autotuning) carefully.
 
 Run:  python -m harness.runner e10 --watch
 """

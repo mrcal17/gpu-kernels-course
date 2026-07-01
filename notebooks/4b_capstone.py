@@ -85,7 +85,7 @@ def _(mo):
     verifiable, so a regression tells you exactly which step broke.
 
     1. **M0 — Reference & harness.** Write the torch reference and a correctness check
-       (`torch.allclose` against the baseline) *before* any kernel. Decide your shapes,
+       (`torch.testing.assert_close` against the baseline) *before* any kernel. Decide your shapes,
        dtypes, and tolerance. You can't tell if a kernel is right without this.
     2. **M1 — Naive correct kernel.** A simple, *correct*, un-tuned Triton (or CUDA)
        kernel that passes the M0 check. Slow is fine. Correct is not optional.
@@ -304,7 +304,7 @@ def _(mo, path_dropdown):
 
     **M0 — reference & harness**
     - [ ] torch reference written; baseline = {_baseline}
-    - [ ] correctness check via `torch.allclose` defined *before* any kernel
+    - [ ] correctness check via `torch.testing.assert_close` defined *before* any kernel
     - [ ] shapes, dtypes, and tolerance fixed up front
 
     **M1 — naive correct kernel**
@@ -342,9 +342,10 @@ def _(mo):
     Performance claims are only as good as the measurement. The discipline:
 
     - **Use `triton.testing.do_bench`,** not a hand-rolled `time.time()` loop. It warms
-      up, runs many iterations, and returns a robust **median** (use `quantiles` if you
-      want p20/p80). A single timed call measures launch overhead and clock noise, not the
-      kernel.
+      up, runs many iterations, and aggregates them — pass `return_mode="median"`
+      explicitly for a robust **median** (the default aggregation is the *mean*; use
+      `quantiles` if you want p20/p80). A single timed call measures launch overhead and
+      clock noise, not the kernel.
     - **Warm up first.** The first launch pays JIT/autotune/cache costs. `do_bench`
       handles this, but if you roll your own, discard the first iterations.
     - **Vary the shapes.** Bench small *and* large. Small shapes are launch-bound and will
@@ -405,8 +406,10 @@ def _(mo):
     python -m harness.runner capstone --watch
     ```
 
-    The harness gives you the reference, the input shapes, and the FLOP/byte counts so
-    your `do_bench` numbers convert straight to the roofline — but the kernel, the
+    Unlike `e01`–`e13`, the capstone's `spec.py` is a **template you fill in** — writing
+    the contract (reference, shapes, tolerance, FLOP/byte counts) *is* milestone M0. It
+    ships with a small runnable placeholder so the runner works out of the box; replace
+    it with your target's contract, then write `kernel.py` against it. The kernel, the
     fusion, the tuning, and the model integration are entirely yours. Pick a path from
     §1, climb the milestones in §2, and don't check a box in §5 you can't defend.
 

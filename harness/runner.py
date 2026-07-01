@@ -188,7 +188,7 @@ def _run_cuda(folder: Path) -> bool:
     # whole thing is wrapped in an extra pair of quotes (cmd /c "...") and the
     # inner quotes are escaped for the Python string.
     inner = (
-        f'"{vcvars}" >nul 2>&1 && '
+        f'"{vcvars}" >nul && '
         f'nvcc -O3 -std=c++17 -arch=sm_120 '
         f'"{harness_cu}" "{kernel_cu}" -o "{exe}"'
     )
@@ -202,20 +202,41 @@ def _run_cuda(folder: Path) -> bool:
         combined = (build.stdout or "") + (build.stderr or "")
         tail = "\n".join(combined.splitlines()[-25:])
         print("[FAIL] build error:")
-        print(tail)
+        if tail.strip():
+            print(tail)
+        else:
+            print("(no compiler output) vcvars64.bat likely failed -- check your "
+                  "VS BuildTools install or set VCVARS to the correct path")
         return False
 
-    # Run the freshly built binary, relaying its stdout verbatim.
-    proc = subprocess.run(
-        [str(exe)], cwd=str(folder), capture_output=True, text=True
+    # Run the freshly built binary, relaying its stdout verbatim. Use Popen so
+    # a hung binary (e.g. a deadlocked kernel) can be killed explicitly --
+    # otherwise the exe stays alive, keeps build\run.exe locked, and the next
+    # rebuild fails confusingly.
+    proc = subprocess.Popen(
+        [str(exe)], cwd=str(folder),
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
     )
-    print(proc.stdout, end="")
+    try:
+        out, err = proc.communicate(timeout=120)
+    except subprocess.TimeoutExpired:
+        # Kill the whole process tree so the exe is really gone and the file
+        # handle on run.exe is released before the next build.
+        subprocess.run(
+            ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+            capture_output=True,
+        )
+        proc.wait()
+        print("[FAIL] timed out after 120s -- deadlocked kernel? "
+              "(classic cause: __syncthreads() behind a divergent branch)")
+        return False
+    print(out, end="")
     if proc.returncode != 0:
         # A nonzero exit means a CUDA_CHECK abort (or similar). Surface stderr.
-        if proc.stderr:
-            print(proc.stderr, end="")
+        if err:
+            print(err, end="")
         return False
-    return "[PASS]" in proc.stdout
+    return "[PASS]" in out
 
 
 def run_one(folder: Path) -> bool:

@@ -33,6 +33,10 @@ def silu_bwd_kernel(
     # TODO: 1-D program id -> the chunk of the flat vector this program owns
     # TODO: offsets + tail mask
     # TODO: load x and grad_output (masked)
+    #       CAREFUL: before doing raw pointer math on grad_output (upstream of
+    #       this launch), ask what its strides are -- autograd makes no
+    #       contiguity promise, and the grad from y.sum().backward() is an
+    #       expanded stride-0 tensor. Check and normalize it if needed.
     # TODO: recompute sigmoid(x); form the SiLU derivative from it
     #       (derive it yourself from out = x*sigmoid(x); the formula symbols
     #        will NOT be your variable names -- map them)

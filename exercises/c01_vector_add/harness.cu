@@ -32,8 +32,9 @@ extern "C" int solve(const float* d_a, const float* d_b, float* d_out, int n);
 
 static const int TODO_SENTINEL = 77;
 
-// Hardcoded HBM roofline for the %-of-peak suffix (mirrors SEGMENTATION.md /
-// the runner's _CUDA_PEAK_BW_GBPS). Aim for a large fraction of this.
+// Hardcoded HBM roofline for the %-of-peak suffix. The 896 GB/s figure is
+// hardcoded right here (see SEGMENTATION.md for where it comes from). Aim for
+// a large fraction of this.
 static const double PEAK_BW_GBPS = 896.0;
 
 // A tiny deterministic host LCG so inputs are reproducible run-to-run and do

@@ -102,9 +102,12 @@ def _(mo):
 
     Here is the single most important mechanism in the course, simulated. Each **warp**
     repeats the same rhythm: issue a little math, then **stall** waiting for a DRAM load
-    to return. The SM can issue from only **one** ready warp per cycle. Green = the SM
-    is issuing math; red = the SM sat **idle** because *every* resident warp was stalled
-    on memory.
+    to return. The simulation deliberately models a single **warp scheduler** that can
+    issue from only one ready warp per cycle. (A real `sm_120` SM has 4 processing
+    partitions, each with its own scheduler, so the SM as a whole issues from up to 4
+    warps per cycle — the latency-hiding intuition below is per-scheduler.) Green = the
+    scheduler is issuing math; red = it sat **idle** because *every* resident warp was
+    stalled on memory.
 
     - **Left — 1 warp resident:** the lone warp computes for a moment, then stalls for
       the whole memory latency while the SM has nothing else to run. The machine is idle
@@ -279,9 +282,9 @@ def _():
                 _ax.add_patch(mpatches.Rectangle((_x + 0.15, _wy), 2.4, 0.8,
                               fill=True, facecolor="#dff0e4", edgecolor="#4c9f70"))
                 _ax.text(_x + 0.25, _wy + 0.55, f"warp = 32 threads", color="#2e6b48", fontsize=7)
-                # threads as ticks
-                for _t in range(16):
-                    _ax.add_patch(mpatches.Rectangle((_x + 0.2 + _t * 0.145, _wy + 0.08), 0.1, 0.28,
+                # threads as ticks (one per lane)
+                for _t in range(32):
+                    _ax.add_patch(mpatches.Rectangle((_x + 0.2 + _t * 0.0715, _wy + 0.08), 0.05, 0.28,
                                   fill=True, facecolor="#4c9f70", edgecolor="none"))
         _fig.tight_layout()
         return _fig
@@ -325,7 +328,7 @@ def _():
         # a launch of N blocks takes. Same limits used by the slider in section 6.
         SMS = 70
         MAX_THREADS_SM = 1536      # resident-thread budget per SM (5070 Ti)
-        MAX_BLOCKS_SM = 32         # hardware cap on resident blocks per SM
+        MAX_BLOCKS_SM = 24         # hardware cap on resident blocks per SM (CC 12.x)
 
         BLOCK_SIZE = 256           # threads/block = 8 warps
         by_threads = MAX_THREADS_SM // BLOCK_SIZE        # blocks an SM can hold (threads)
@@ -462,11 +465,19 @@ def _(mo):
     - **warps/block** = $\text{BLOCK\_SIZE}/32$ — should divide evenly (no wasted lanes).
     - **occupancy** = resident warps / 48. *Occupancy* is how full the SM's warp slots
       are — the §1 surplus, quantified. Here it is capped by the SM's 1536-thread budget
-      and its up-to-32-blocks-per-SM (`sm_120`) limit.
+      and its 24-blocks-per-SM (`sm_120`) limit.
 
     This occupancy model ignores registers and shared memory — the *other* two limiters,
-    covered in `0d`. Even so, notice that block sizes which aren't multiples of 32 waste
-    lanes, and very small blocks can't put enough warps on an SM to hide latency.
+    covered in `0d`. Even so, notice that very small blocks can't put enough warps on an
+    SM to hide latency: at `BLOCK_SIZE=32` the 24-block cap allows only 24 resident
+    warps — 50% occupancy. (The slider moves in steps of 32 because block sizes should
+    always be multiples of the warp size — a ragged block still occupies whole warp
+    slots.)
+
+    > Footnote on the 24: NVIDIA's Blackwell tuning guide erroneously says 32 blocks/SM
+    > for CC 12.0 — that figure is correct only for CC 10.0. The CUDA Programming Guide
+    > table and the runtime (`cudaDevAttrMaxBlocksPerMultiprocessor`) both say **24**
+    > for this card.
     """)
     return
 
@@ -487,7 +498,7 @@ def _(block_slider):
 
         N = 1_000_000
         MAX_THREADS_SM = 1536      # your 5070 Ti
-        MAX_BLOCKS_SM = 32         # typical per-SM block cap
+        MAX_BLOCKS_SM = 24         # per-SM block cap (CC 12.x; see footnote above)
         WARPS_CAP = MAX_THREADS_SM // 32   # 48
 
         def occupancy(tpb):

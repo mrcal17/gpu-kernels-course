@@ -16,8 +16,6 @@
 
 #include <cuda_runtime.h>
 
-#define FULL_MASK 0xffffffffu
-
 // ---------------------------------------------------------------------------
 // The reduction kernel(s).
 //

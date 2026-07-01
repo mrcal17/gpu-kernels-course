@@ -39,6 +39,8 @@ loop. Here it is for this kernel, to run yourself in a scratch script:
 import torch, triton
 torch.backends.cuda.matmul.allow_tf32 = False   # fair fp32 reference (torch uses TF32 by default)
 
+torch.manual_seed(0); a = torch.randn(1024, 1024, device="cuda", dtype=torch.float32); b = torch.randn(1024, 1024, device="cuda", dtype=torch.float32)   # as spec.py builds them
+
 ref = a @ b                                 # reference FIRST (torch)
 out = matmul(a, b)                          # your kernel
 torch.testing.assert_close(out, ref, atol=1e-1, rtol=1e-2)   # a K-long inner product reorders many adds -> loose
@@ -56,13 +58,13 @@ target (otherwise it disagrees for reasons that aren't your bug), and expect `re
 beating cuBLAS is hard. Full tolerance table and traps: `7b`.
 
 ## Going for performance
-- `tl.dot` maps to tensor cores — this is where you first feel them.
-- **Precision note:** on fp32 inputs, `tl.dot` uses TF32 tensor-core math by
-  default, which rounds the mantissa. The spec's reference runs in true fp32
-  (`allow_tf32=False`), so to match it exactly use
-  `tl.dot(a, b, input_precision='ieee')`. The loose tolerances here
-  (`atol=1e-1`) also accept the faster default TF32, so either works — just
-  know which one you picked.
+- The block-matmul primitive maps to tensor cores — this is where you first feel them.
+- **Precision note:** on fp32 inputs, the block-matmul primitive uses TF32
+  tensor-core math by default, which rounds the mantissa. The spec's reference
+  runs in true fp32 (`allow_tf32=False`), so to match it exactly, note that the
+  primitive accepts an `input_precision` argument — you'll want full fp32
+  (`'ieee'`). The loose tolerances here (`atol=1e-1`) also accept the faster
+  default TF32, so either works — just know which one you picked.
 - Tile sizes are everything: experiment with power-of-two `BLOCK_M`/`BLOCK_N` in the
   tens-to-low-hundreds and a smaller `BLOCK_K`, and watch how FLOP/s responds.
 - The reuse story: each loaded A/B tile is used `BLOCK_N`/`BLOCK_M` times. Bigger tiles
